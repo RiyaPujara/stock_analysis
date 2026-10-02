@@ -1,61 +1,37 @@
 import 'package:flutter/material.dart';
-
 import '../stock/stock_details_screen.dart';
+import '../simulator/what_if_simulator_screen.dart';
 import '../../services/market_service.dart';
 import '../../models/market_index.dart';
+import '../../utils/app_theme.dart';
 
 class MarketScreen extends StatefulWidget {
-  const MarketScreen({super.key});
+  final bool showAppBar;
+  const MarketScreen({super.key, this.showAppBar = false});
 
   @override
   State<MarketScreen> createState() => _MarketScreenState();
 }
 
 class _MarketScreenState extends State<MarketScreen> {
-  final TextEditingController _searchController =
-      TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
 
   String _searchQuery = '';
-  List<Map<String, dynamic>> _remoteStocks = [];
+  String _selectedCategory = 'All';
+  // Initialize with the full master list of Indian stocks so it's NEVER empty!
+  List<Map<String, dynamic>> _stocks = MarketService.masterStocks;
   List<MarketIndex> _indices = [];
-  bool _isLoading = false;
+  bool _isRefreshing = false;
+  String _currentApiSource = MarketService.activeSource;
 
-  final List<Map<String, dynamic>> _fallbackStocks = [
-    {
-      'companyName': 'Reliance Industries',
-      'symbol': 'RELIANCE',
-      'price': '₹2,945.50',
-      'change': '+1.25%',
-      'isPositive': true,
-    },
-    {
-      'companyName': 'Tata Consultancy Services',
-      'symbol': 'TCS',
-      'price': '₹4,125.80',
-      'change': '+0.82%',
-      'isPositive': true,
-    },
-    {
-      'companyName': 'Infosys',
-      'symbol': 'INFY',
-      'price': '₹1,485.20',
-      'change': '-0.45%',
-      'isPositive': false,
-    },
-    {
-      'companyName': 'HDFC Bank',
-      'symbol': 'HDFCBANK',
-      'price': '₹1,875.40',
-      'change': '+0.64%',
-      'isPositive': true,
-    },
-    {
-      'companyName': 'ICICI Bank',
-      'symbol': 'ICICIBANK',
-      'price': '₹1,425.70',
-      'change': '-0.21%',
-      'isPositive': false,
-    },
+  final List<String> _categories = [
+    'All',
+    'Nifty 50',
+    'Banking',
+    'Technology',
+    'Automobile',
+    'Energy',
+    'Top Gainers',
   ];
 
   @override
@@ -65,19 +41,36 @@ class _MarketScreenState extends State<MarketScreen> {
   }
 
   Future<void> _loadMarketData() async {
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() => _isRefreshing = true);
 
-    final stocks = await MarketService.instance.searchStocks();
-    final indices = await MarketService.instance.getIndices();
+    try {
+      final indices = await MarketService.instance.getIndices();
+      final freshStocks = await MarketService.instance.getRealtimeBatch();
 
-    if (mounted) {
-      setState(() {
-        _remoteStocks = stocks;
-        _indices = indices;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _indices = indices;
+          if (freshStocks.isNotEmpty) {
+            _stocks = freshStocks;
+          }
+          _currentApiSource = MarketService.activeSource;
+          _isRefreshing = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isRefreshing = false);
+    }
+  }
+
+  Future<void> _onSearchChanged(String query) async {
+    setState(() => _searchQuery = query);
+    if (query.trim().isNotEmpty) {
+      final results = await MarketService.instance.searchRealtimeStocks(query);
+      if (mounted) {
+        setState(() => _stocks = results);
+      }
+    } else if (query.trim().isEmpty) {
+      _loadMarketData();
     }
   }
 
@@ -87,72 +80,153 @@ class _MarketScreenState extends State<MarketScreen> {
     super.dispose();
   }
 
-  List<Map<String, dynamic>> get _displayStocks {
-    if (_remoteStocks.isNotEmpty) {
-      final list = _remoteStocks.map((s) {
-        final name = s['companyName'] ?? s['name'] ?? s['symbol'] ?? '';
-        final sym = s['symbol'] ?? '';
-        final price = s['price'] ?? '₹${((s['currentPrice'] ?? 0.0) as num).toStringAsFixed(2)}';
-        final chgVal = ((s['changePercent'] ?? 0.0) as num).toDouble();
-        final chg = s['change'] ?? '${chgVal >= 0 ? '+' : ''}${chgVal.toStringAsFixed(2)}%';
-        final isPos = s['isPositive'] ?? (chgVal >= 0);
-        return {
-          'companyName': name,
-          'symbol': sym,
-          'price': price,
-          'change': chg,
-          'isPositive': isPos,
-        };
+  List<Map<String, dynamic>> get _filteredStocks {
+    var list = _stocks;
+
+    if (_selectedCategory == 'Top Gainers') {
+      list = list.where((s) {
+        final chg = ((s['changePercent'] ?? 0.0) as num).toDouble();
+        return chg > 0;
       }).toList();
+    } else if (_selectedCategory == 'Banking') {
+      list = list.where((s) {
+        final sec = (s['sector'] ?? '').toString().toLowerCase();
+        return sec.contains('bank') || sec.contains('financial');
+      }).toList();
+    } else if (_selectedCategory == 'Technology') {
+      list = list.where((s) {
+        final sec = (s['sector'] ?? '').toString().toLowerCase();
+        return sec.contains('tech') || sec.contains('it');
+      }).toList();
+    } else if (_selectedCategory == 'Automobile') {
+      list = list.where((s) {
+        final sec = (s['sector'] ?? '').toString().toLowerCase();
+        return sec.contains('auto');
+      }).toList();
+    } else if (_selectedCategory == 'Energy') {
+      list = list.where((s) {
+        final sec = (s['sector'] ?? '').toString().toLowerCase();
+        return sec.contains('energy') || sec.contains('power') || sec.contains('oil');
+      }).toList();
+    } else if (_selectedCategory == 'Nifty 50') {
+      // Top prominent Nifty 50 constituents
+      final niftySymbols = {
+        'RELIANCE', 'TCS', 'HDFCBANK', 'INFY', 'ICICIBANK',
+        'BHARTIARTL', 'SBIN', 'TATAMOTORS', 'TATASTEEL', 'ITC',
+        'WIPRO', 'HINDUNILVR', 'BAJFINANCE', 'MARUTI', 'SUNPHARMA',
+        'AXISBANK', 'KOTAKBANK', 'LT', 'TITAN', 'ADANIENT',
+        'ADANIPORTS', 'NTPC', 'POWERGRID', 'COALINDIA', 'M&M',
+        'ULTRACEMCO', 'ASIANPAINT', 'HCLTECH', 'CIPLA', 'JSWSTEEL'
+      };
+      list = list.where((s) => niftySymbols.contains(s['symbol'])).toList();
+    }
 
-      if (_searchQuery.isEmpty) return list;
-
-      return list.where((stock) {
-        final companyName = stock['companyName'].toString().toLowerCase();
-        final symbol = stock['symbol'].toString().toLowerCase();
-        return companyName.contains(_searchQuery) ||
-            symbol.contains(_searchQuery);
+    if (_searchQuery.trim().isNotEmpty) {
+      final q = _searchQuery.toLowerCase().trim();
+      list = list.where((s) {
+        final name = (s['companyName'] ?? s['name'] ?? '').toString().toLowerCase();
+        final sym = (s['symbol'] ?? '').toString().toLowerCase();
+        final sec = (s['sector'] ?? '').toString().toLowerCase();
+        return name.contains(q) || sym.contains(q) || sec.contains(q);
       }).toList();
     }
 
-    if (_searchQuery.isEmpty) {
-      return _fallbackStocks;
-    }
-
-    return _fallbackStocks.where((stock) {
-      final companyName =
-          stock['companyName'].toString().toLowerCase();
-      final symbol =
-          stock['symbol'].toString().toLowerCase();
-
-      return companyName.contains(_searchQuery) ||
-          symbol.contains(_searchQuery);
-    }).toList();
+    return list;
   }
 
-  void _clearSearch() {
-    _searchController.clear();
-
-    setState(() {
-      _searchQuery = '';
-    });
+  void _showApiSettingsDialog() {
+    final urlController = TextEditingController(text: MarketService.customIndianStockApiUrl);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.hub_rounded, color: AppTheme.primaryEmerald),
+            SizedBox(width: 8),
+            Text('Indian Stock Market API'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Connected to 0xramm Indian-Stock-Market-API. You can point to your local Flask service (http://127.0.0.1:5000) or any deployed instance.',
+              style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: urlController,
+              decoration: const InputDecoration(
+                labelText: 'API Base URL',
+                hintText: 'http://127.0.0.1:5000',
+                prefixIcon: Icon(Icons.link_rounded),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Current Active Status: $_currentApiSource',
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.primaryEmerald),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              MarketService.customIndianStockApiUrl = urlController.text.trim();
+              Navigator.pop(ctx);
+              _loadMarketData();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('API URL updated and data reloaded!')),
+              );
+            },
+            child: const Text('Save & Reconnect'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final filteredStocks = _displayStocks;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Market'),
-        actions: [
-          IconButton(
-            onPressed: _loadMarketData,
-            icon: const Icon(Icons.refresh),
-            tooltip: 'Refresh Market',
-          ),
-        ],
-      ),
+      appBar: widget.showAppBar
+          ? AppBar(
+              title: const Text('Live Indian Markets'),
+              actions: [
+                IconButton(
+                  tooltip: 'Configure Indian Stock Market API',
+                  onPressed: _showApiSettingsDialog,
+                  icon: const Icon(Icons.settings_input_component_rounded),
+                ),
+                IconButton(
+                  tooltip: 'Refresh Real-time Quotes',
+                  onPressed: () {
+                    _loadMarketData();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Syncing live data from $_currentApiSource...'),
+                        duration: const Duration(seconds: 2),
+                      ),
+                    );
+                  },
+                  icon: _isRefreshing
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.refresh_rounded),
+                ),
+              ],
+            )
+          : null,
       body: RefreshIndicator(
         onRefresh: _loadMarketData,
         child: SingleChildScrollView(
@@ -161,402 +235,441 @@ class _MarketScreenState extends State<MarketScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Search Bar
-              TextField(
-                controller: _searchController,
-                onChanged: (value) {
-                  setState(() {
-                    _searchQuery = value.toLowerCase().trim();
-                  });
-                },
-                decoration: InputDecoration(
-                  hintText: 'Search stocks...',
-                  prefixIcon: const Icon(Icons.search),
-                  suffixIcon: _searchQuery.isNotEmpty
-                      ? IconButton(
-                          onPressed: _clearSearch,
-                          icon: const Icon(Icons.clear),
-                        )
-                      : IconButton(
-                          onPressed: () {},
-                          icon: const Icon(Icons.tune),
+              // Indian Stock Market API Badge Bar
+              InkWell(
+                onTap: _showApiSettingsDialog,
+                borderRadius: BorderRadius.circular(14),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF131C2E) : const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: AppTheme.primaryEmerald.withValues(alpha: 0.35),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: const BoxDecoration(
+                          color: AppTheme.primaryEmerald,
+                          shape: BoxShape.circle,
                         ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              '0xramm Indian-Stock-Market-API (Live NSE & BSE)',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.primaryEmerald,
+                              ),
+                            ),
+                            Text(
+                              'Status: $_currentApiSource',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.chevron_right_rounded, size: 20, color: AppTheme.primaryEmerald),
+                    ],
                   ),
                 ),
               ),
 
-              const SizedBox(height: 28),
+              const SizedBox(height: 20),
 
-              // Market Overview
-              Text(
-                'Market Overview',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
+              // Realtime Indices Section
+              const Text(
+                'Key Benchmarks',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: (_indices.isNotEmpty
+                          ? _indices
+                          : [
+                              MarketIndex(name: 'NIFTY 50', symbol: '^NSEI', currentValue: 22421.95, change: -198.45, changePercent: -0.88),
+                              MarketIndex(name: 'SENSEX', symbol: '^BSESN', currentValue: 71909.70, change: -612.30, changePercent: -0.84),
+                              MarketIndex(name: 'BANK NIFTY', symbol: '^NSEBANK', currentValue: 54450.75, change: 240.50, changePercent: 0.44),
+                              MarketIndex(name: 'NIFTY IT', symbol: '^CNXIT', currentValue: 28304.70, change: -115.20, changePercent: -0.40),
+                            ])
+                      .map((idx) {
+                    final isPos = idx.changePercent >= 0;
+                    return Container(
+                      width: 170,
+                      margin: const EdgeInsets.only(right: 12),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: isDark ? AppTheme.darkSurface : Colors.white,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(
+                          color: isPos
+                              ? AppTheme.primaryEmerald.withValues(alpha: 0.25)
+                              : AppTheme.dangerRed.withValues(alpha: 0.25),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            idx.name,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF94A3B8),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '₹${idx.currentValue.toStringAsFixed(1)}',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Icon(
+                                isPos ? Icons.trending_up : Icons.trending_down,
+                                size: 16,
+                                color: isPos ? AppTheme.successGreen : AppTheme.dangerRed,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '${isPos ? '+' : ''}${idx.changePercent.toStringAsFixed(2)}%',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: isPos ? AppTheme.successGreen : AppTheme.dangerRed,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
+              // Search Bar
+              TextField(
+                controller: _searchController,
+                onChanged: _onSearchChanged,
+                decoration: InputDecoration(
+                  hintText: 'Search 30+ Indian stocks (Reliance, TCS, HDFC, Tata, ITC)...',
+                  prefixIcon: const Icon(Icons.search_rounded),
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear_rounded),
+                          onPressed: () {
+                            _searchController.clear();
+                            _onSearchChanged('');
+                          },
+                        )
+                      : null,
+                ),
               ),
 
               const SizedBox(height: 16),
 
-              Row(
-                children: [
-                  Expanded(
-                    child: _MarketIndexCard(
-                      name: _indices.isNotEmpty ? _indices[0].name : 'NIFTY 50',
-                      value: _indices.isNotEmpty
-                          ? _indices[0].value.toStringAsFixed(2)
-                          : '25,350.20',
-                      change: _indices.isNotEmpty
-                          ? '${_indices[0].changePercent >= 0 ? '+' : ''}${_indices[0].changePercent.toStringAsFixed(2)}%'
-                          : '+0.72%',
-                      isPositive: _indices.isNotEmpty
-                          ? _indices[0].changePercent >= 0
-                          : true,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _MarketIndexCard(
-                      name: _indices.length > 1 ? _indices[1].name : 'SENSEX',
-                      value: _indices.length > 1
-                          ? _indices[1].value.toStringAsFixed(2)
-                          : '82,450.30',
-                      change: _indices.length > 1
-                          ? '${_indices[1].changePercent >= 0 ? '+' : ''}${_indices[1].changePercent.toStringAsFixed(2)}%'
-                          : '+0.58%',
-                      isPositive: _indices.length > 1
-                          ? _indices[1].changePercent >= 0
-                          : true,
-                    ),
-                  ),
-                ],
+              // Filter Category Chips
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: _categories.map((cat) {
+                    final isSelected = _selectedCategory == cat;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ChoiceChip(
+                        label: Text(cat),
+                        selected: isSelected,
+                        selectedColor: AppTheme.primaryEmerald.withValues(alpha: 0.2),
+                        labelStyle: TextStyle(
+                          fontSize: 12,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                          color: isSelected ? AppTheme.primaryEmerald : null,
+                        ),
+                        onSelected: (val) {
+                          if (val) setState(() => _selectedCategory = cat);
+                        },
+                      ),
+                    );
+                  }).toList(),
+                ),
               ),
 
-              const SizedBox(height: 28),
+              const SizedBox(height: 20),
 
-              // Popular Stocks
+              // Stocks List Header
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    'Popular Stocks',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
+                    'Indian Equities (${_filteredStocks.length})',
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  if (_isRefreshing)
+                    const Row(
+                      children: [
+                        SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
                         ),
-                  ),
-                  TextButton(
-                    onPressed: _loadMarketData,
-                    child: const Text('Refresh'),
-                  ),
+                        SizedBox(width: 6),
+                        Text(
+                          'Updating Live...',
+                          style: TextStyle(fontSize: 11, color: AppTheme.primaryEmerald),
+                        ),
+                      ],
+                    ),
                 ],
               ),
+              const SizedBox(height: 12),
 
-              const SizedBox(height: 8),
-
-              if (filteredStocks.isEmpty && !_isLoading)
-                const _NoStocksFound()
-              else if (_isLoading && filteredStocks.isEmpty)
-                const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(20),
-                    child: CircularProgressIndicator(),
+              if (_filteredStocks.isEmpty)
+                Container(
+                  padding: const EdgeInsets.all(32),
+                  alignment: Alignment.center,
+                  child: const Column(
+                    children: [
+                      Icon(Icons.search_off_rounded, size: 48, color: Color(0xFF64748B)),
+                      SizedBox(height: 12),
+                      Text('No matching Indian equities found'),
+                    ],
                   ),
                 )
               else
-                ...filteredStocks.map(
-                  (stock) => _StockCard(
-                    companyName: stock['companyName'],
-                    symbol: stock['symbol'],
-                    price: stock['price'],
-                    change: stock['change'],
-                    isPositive: stock['isPositive'],
-                  ),
-                ),
+                ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: _filteredStocks.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 12),
+                  itemBuilder: (context, index) {
+                    final item = _filteredStocks[index];
+                    final sym = item['symbol'] ?? '';
+                    final name = item['companyName'] ?? item['name'] ?? sym;
+                    final priceVal = ((item['currentPrice'] ?? 0.0) as num).toDouble();
+                    final chgVal = ((item['changePercent'] ?? 0.0) as num).toDouble();
+                    final isPos = chgVal >= 0;
+                    final exchange = item['exchange'] ?? 'NSE';
+                    final sector = item['sector'] ?? 'Equities';
 
-              const SizedBox(height: 28),
-
-            // Market Sectors
-            Text(
-              'Market Sectors',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-            ),
-
-            const SizedBox(height: 16),
-
-            SizedBox(
-              height: 110,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                children: [
-                  _SectorCard(
-                    title: 'Banking',
-                    icon: Icons.account_balance,
-                    change: '+1.12%',
-                    isPositive: true,
-                  ),
-                  _SectorCard(
-                    title: 'IT',
-                    icon: Icons.computer,
-                    change: '+0.84%',
-                    isPositive: true,
-                  ),
-                  _SectorCard(
-                    title: 'Pharma',
-                    icon: Icons.medical_services_outlined,
-                    change: '-0.32%',
-                    isPositive: false,
-                  ),
-                  _SectorCard(
-                    title: 'Auto',
-                    icon: Icons.directions_car_outlined,
-                    change: '+0.56%',
-                    isPositive: true,
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 30),
-          ],
-        ),
-      ),
-    ),
-  );
-}
-}
-
-// No Stocks Found
-class _NoStocksFound extends StatelessWidget {
-  const _NoStocksFound();
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(30),
-        child: Center(
-          child: Column(
-            children: [
-              Icon(
-                Icons.search_off,
-                size: 45,
-                color: Theme.of(context)
-                    .colorScheme
-                    .onSurfaceVariant,
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'No stocks found',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 5),
-              Text(
-                'Try searching with another name or symbol.',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// Market Index Card
-class _MarketIndexCard extends StatelessWidget {
-  final String name;
-  final String value;
-  final String change;
-  final bool isPositive;
-
-  const _MarketIndexCard({
-    required this.name,
-    required this.value,
-    required this.change,
-    required this.isPositive,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              name,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              value,
-              style: const TextStyle(
-                fontSize: 19,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 5),
-            Text(
-              change,
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                color: isPositive ? Colors.green : Colors.red,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// Stock Card
-class _StockCard extends StatelessWidget {
-  final String companyName;
-  final String symbol;
-  final String price;
-  final String change;
-  final bool isPositive;
-
-  const _StockCard({
-    required this.companyName,
-    required this.symbol,
-    required this.price,
-    required this.change,
-    required this.isPositive,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => StockDetailsScreen(
-                companyName: companyName,
-                symbol: symbol,
-              ),
-            ),
-          );
-        },
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              CircleAvatar(
-                backgroundColor:
-                    Theme.of(context).colorScheme.primaryContainer,
-                child: Icon(
-                  Icons.show_chart,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-              ),
-
-              const SizedBox(width: 12),
-
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      companyName,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
+                    return Container(
+                      decoration: BoxDecoration(
+                        color: isDark ? AppTheme.darkSurface : Colors.white,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(
+                          color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      symbol,
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(18),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => StockDetailsScreen(
+                                  companyName: name,
+                                  symbol: sym,
+                                ),
+                              ),
+                            );
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Row(
+                              children: [
+                                // Company Symbol Badge
+                                Container(
+                                  width: 46,
+                                  height: 46,
+                                  decoration: BoxDecoration(
+                                    color: isDark
+                                        ? const Color(0xFF1A2333)
+                                        : const Color(0xFFF1F5F9),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: isDark
+                                          ? const Color(0xFF243048)
+                                          : const Color(0xFFE2E8F0),
+                                    ),
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: Text(
+                                    sym.length > 4 ? sym.substring(0, 4) : sym,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 11,
+                                      color: AppTheme.primaryEmerald,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 14),
+
+                                // Name & Sector
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Flexible(
+                                            child: Text(
+                                              name,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 14,
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 5,
+                                              vertical: 1,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: isDark
+                                                  ? const Color(0xFF1E293B)
+                                                  : const Color(0xFFE2E8F0),
+                                              borderRadius: BorderRadius.circular(4),
+                                            ),
+                                            child: Text(
+                                              exchange,
+                                              style: const TextStyle(
+                                                fontSize: 9,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Row(
+                                        children: [
+                                          Text(
+                                            sym,
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600,
+                                              color: Color(0xFF94A3B8),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          const Text(
+                                            '•',
+                                            style: TextStyle(color: Color(0xFF64748B)),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            sector,
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              color: Color(0xFF64748B),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+
+                                // Price & Change
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      '₹${priceVal.toStringAsFixed(2)}',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 15,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                        vertical: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: isPos
+                                            ? AppTheme.successGreen.withValues(alpha: 0.15)
+                                            : AppTheme.dangerRed.withValues(alpha: 0.15),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        '${isPos ? '+' : ''}${chgVal.toStringAsFixed(2)}%',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: isPos
+                                              ? AppTheme.successGreen
+                                              : AppTheme.dangerRed,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+
+                                const SizedBox(width: 6),
+
+                                // Quick AI What-If Icon Button
+                                IconButton(
+                                  tooltip: 'Run Gemini AI What-If Analysis',
+                                  icon: const Icon(
+                                    Icons.auto_awesome_rounded,
+                                    color: AppTheme.accentPurple,
+                                    size: 20,
+                                  ),
+                                  onPressed: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => WhatIfSimulatorScreen(
+                                          initialSymbol: sym,
+                                          initialPrice: priceVal,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
                 ),
-              ),
-
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    price,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    change,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      color: isPositive ? Colors.green : Colors.red,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// Sector Card
-class _SectorCard extends StatelessWidget {
-  final String title;
-  final IconData icon;
-  final String change;
-  final bool isPositive;
-
-  const _SectorCard({
-    required this.title,
-    required this.icon,
-    required this.change,
-    required this.isPositive,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 130,
-      child: Card(
-        margin: const EdgeInsets.only(right: 12),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(
-                icon,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                change,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: isPositive ? Colors.green : Colors.red,
-                ),
-              ),
             ],
           ),
         ),

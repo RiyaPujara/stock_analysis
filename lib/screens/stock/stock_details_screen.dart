@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../services/market_service.dart';
 import '../../services/watchlist_service.dart';
 import '../alerts/alerts_screen.dart';
+import '../simulator/what_if_simulator_screen.dart';
 
 class StockDetailsScreen extends StatefulWidget {
   final String companyName;
@@ -173,9 +174,35 @@ class _StockDetailsScreenState extends State<StockDetailsScreen> {
 
             const SizedBox(height: 6),
 
-            Text(
-              widget.symbol,
-              style: Theme.of(context).textTheme.bodyMedium,
+            Row(
+              children: [
+                Text(
+                  widget.symbol,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.5,
+                      ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF00DC82).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: const Color(0xFF00DC82).withValues(alpha: 0.4),
+                    ),
+                  ),
+                  child: const Text(
+                    'LIVE • NSE',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF00DC82),
+                    ),
+                  ),
+                ),
+              ],
             ),
 
             const SizedBox(height: 20),
@@ -357,11 +384,63 @@ class _StockDetailsScreenState extends State<StockDetailsScreen> {
 
             const SizedBox(height: 30),
 
+            // Run Gemini AI What-If Analysis
+            Container(
+              width: double.infinity,
+              height: 52,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF8B5CF6), Color(0xFF06B6D4)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF8B5CF6).withValues(alpha: 0.3),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => WhatIfSimulatorScreen(
+                        initialSymbol: widget.symbol,
+                        initialPrice: currentPrice,
+                      ),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.auto_awesome_rounded, color: Colors.white),
+                label: const Text(
+                  'Run Gemini AI What-If Analysis',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                    fontSize: 15,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  shadowColor: Colors.transparent,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 14),
+
             // Add to Watchlist
             SizedBox(
               width: double.infinity,
               height: 52,
-              child: FilledButton.icon(
+              child: OutlinedButton.icon(
                 onPressed: _isAddingToWatchlist ? null : _toggleWatchlist,
                 icon: Icon(_isWatchlisted ? Icons.star : Icons.star_border),
                 label: Text(

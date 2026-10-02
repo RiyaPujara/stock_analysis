@@ -12,9 +12,11 @@ import '../../services/portfolio_service.dart';
 import '../../services/market_service.dart';
 import '../../services/watchlist_service.dart';
 import '../../models/market_index.dart';
+import '../../utils/app_theme.dart';
 
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key});
+  final bool showAppBar;
+  const DashboardScreen({super.key, this.showAppBar = false});
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -24,6 +26,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Map<String, dynamic>? _summary;
   List<MarketIndex> _indices = [];
   List<Map<String, dynamic>> _watchlist = [];
+  List<Map<String, dynamic>> _trendingStocks = [];
+  bool _isLoading = false;
 
   @override
   void initState() {
@@ -32,31 +36,86 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _loadData() async {
-    final summary = await PortfolioService.instance.getSummary();
-    final indices = await MarketService.instance.getIndices();
-    final watchlist = await WatchlistService.instance.getWatchlist();
+    setState(() => _isLoading = true);
 
-    if (mounted) {
-      setState(() {
-        _summary = summary;
-        _indices = indices;
-        _watchlist = watchlist;
-      });
+    try {
+      final summary = await PortfolioService.instance.getSummary();
+      final indices = await MarketService.instance.getIndices();
+      final watchlist = await WatchlistService.instance.getWatchlist();
+      final trending = await MarketService.instance.getRealtimeBatch(
+        symbols: ['RELIANCE', 'TCS', 'HDFCBANK', 'INFY', 'TATAMOTORS'],
+      );
+
+      if (mounted) {
+        setState(() {
+          _summary = summary;
+          _indices = indices;
+          _watchlist = watchlist;
+          _trendingStocks = trending;
+          _isLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final totalValue = (_summary?['totalValue'] ?? 125000.0) as num;
     final todayGain = (_summary?['todayGain'] ?? 2450.0) as num;
     final todayGainPercent = (_summary?['todayGainPercent'] ?? 1.98) as num;
     final isPositiveGain = todayGain >= 0;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Dashboard'),
+      appBar: widget.showAppBar
+          ? AppBar(
+              title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                gradient: AppTheme.emeraldGradient,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(
+                Icons.trending_up_rounded,
+                color: Colors.white,
+                size: 18,
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Text(
+              'Stock Pulse',
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+            ),
+          ],
+        ),
         actions: [
+          if (_isLoading)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.only(right: 8),
+                child: SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            ),
           IconButton(
+            tooltip: 'Live Watchlist',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const WatchlistScreen()),
+              ).then((_) => _loadData());
+            },
+            icon: const Icon(Icons.star_outline_rounded),
+          ),
+          IconButton(
+            tooltip: 'Notifications',
             onPressed: () {
               Navigator.push(
                 context,
@@ -65,10 +124,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               );
             },
-            icon: const Icon(Icons.notifications_none),
+            icon: const Icon(Icons.notifications_none_rounded),
           ),
         ],
-      ),
+      )
+    : null,
       body: RefreshIndicator(
         onRefresh: _loadData,
         child: SingleChildScrollView(
@@ -77,176 +137,372 @@ class _DashboardScreenState extends State<DashboardScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Welcome Text
               Text(
-                'Good Evening 👋',
-                style: Theme.of(context).textTheme.bodyLarge,
+                'Indian Markets & Intelligence',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                  letterSpacing: 0.5,
+                ),
               ),
               const SizedBox(height: 4),
-              Text(
-                'Welcome back!',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
+              const Text(
+                'Financial Overview',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.5,
+                ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 14),
 
-              // Portfolio Summary
+              // Benchmark ticker ribbon
+              if (_indices.isNotEmpty) ...[
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: _indices.map((idx) {
+                      final isPos = idx.changePercent >= 0;
+                      return Container(
+                        margin: const EdgeInsets.only(right: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: isDark ? const Color(0xFF131B2A) : const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Text(
+                              idx.name,
+                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              '₹${idx.currentValue.toStringAsFixed(0)}',
+                              style: const TextStyle(fontSize: 11),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${isPos ? '+' : ''}${idx.changePercent.toStringAsFixed(2)}%',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: isPos ? AppTheme.successGreen : AppTheme.dangerRed,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+                const SizedBox(height: 14),
+              ],
+
+              // Hero Portfolio Card with Shimmer Gradient
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(22),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primary,
-                  borderRadius: BorderRadius.circular(20),
+                  gradient: isDark
+                      ? const LinearGradient(
+                          colors: [Color(0xFF0F172A), Color(0xFF1E293B)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        )
+                      : const LinearGradient(
+                          colors: [Color(0xFF064E3B), Color(0xFF059669)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(
+                    color: AppTheme.primaryEmerald.withValues(alpha: isDark ? 0.35 : 0.6),
+                    width: 1.5,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: (isDark ? AppTheme.primaryEmerald : const Color(0xFF059669))
+                          .withValues(alpha: 0.15),
+                      blurRadius: 24,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Total Portfolio Value',
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onPrimary,
-                        fontSize: 14,
-                      ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Total Portfolio Value',
+                          style: TextStyle(
+                            color: Color(0xFFE2E8F0),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.lock_outline, size: 12, color: Colors.white),
+                              SizedBox(width: 4),
+                              Text(
+                                'ACTIVE',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 10),
                     Text(
                       '₹${totalValue.toStringAsFixed(2)}',
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onPrimary,
-                        fontSize: 30,
-                        fontWeight: FontWeight.bold,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 34,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -1,
                       ),
                     ),
                     const SizedBox(height: 12),
                     Row(
                       children: [
-                        Icon(
-                          isPositiveGain ? Icons.trending_up : Icons.trending_down,
-                          color: Theme.of(context).colorScheme.onPrimary,
-                          size: 20,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          '${isPositiveGain ? '+' : ''}₹${todayGain.abs().toStringAsFixed(2)} (${isPositiveGain ? '+' : ''}${todayGainPercent.toStringAsFixed(2)}%)',
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.onPrimary,
-                            fontWeight: FontWeight.w600,
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: (isPositiveGain ? AppTheme.successGreen : AppTheme.dangerRed)
+                                .withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                isPositiveGain ? Icons.trending_up : Icons.trending_down,
+                                color: isPositiveGain ? AppTheme.primaryEmerald : AppTheme.dangerRed,
+                                size: 16,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '${isPositiveGain ? '+' : ''}₹${todayGain.abs().toStringAsFixed(2)} (${isPositiveGain ? '+' : ''}${todayGainPercent.toStringAsFixed(2)}%)',
+                                style: TextStyle(
+                                  color: isPositiveGain ? AppTheme.primaryEmerald : AppTheme.dangerRed,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        const SizedBox(width: 6),
-                        Text(
+                        const SizedBox(width: 8),
+                        const Text(
                           'Today',
                           style: TextStyle(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onPrimary
-                                .withValues(alpha: 0.8),
+                            color: Color(0xFFCBD5E1),
+                            fontSize: 12,
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 16),
-                    OutlinedButton(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) =>
-                                const PortfolioDetailsScreen(),
+                    const SizedBox(height: 18),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const PortfolioDetailsScreen(),
+                            ),
+                          ).then((_) => _loadData());
+                        },
+                        icon: const Icon(Icons.pie_chart_outline_rounded, size: 16),
+                        label: const Text('Manage Assets & Performance'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          side: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
                           ),
-                        ).then((_) => _loadData());
-                      },
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor:
-                            Theme.of(context).colorScheme.onPrimary,
-                        side: BorderSide(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onPrimary
-                              .withValues(alpha: 0.6),
                         ),
                       ),
-                      child: const Text('View Portfolio Details'),
                     ),
                   ],
                 ),
               ),
 
-              const SizedBox(height: 28),
+              const SizedBox(height: 24),
 
-              // Quick Actions
-              Text(
-                'Quick Actions',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
+              // Spotlight: Gemini AI What-If Scenario Banner
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF2E1065), Color(0xFF1E1B4B)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: const Color(0xFF8B5CF6).withValues(alpha: 0.4),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        gradient: AppTheme.aiGradient,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: const Icon(
+                        Icons.auto_awesome_rounded,
+                        color: Colors.white,
+                        size: 24,
+                      ),
                     ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Gemini AI What-If Simulator',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          const Text(
+                            'Simulate RBI decisions, crude oil surges & earnings impacts.',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFFC7D2FE),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: const Color(0xFF2E1065),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const WhatIfSimulatorScreen(),
+                          ),
+                        );
+                      },
+                      child: const Text(
+                        'Launch',
+                        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 16),
+
+              const SizedBox(height: 24),
+
+              // Quick Actions Grid
+              const Text(
+                'Quick Navigation',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
 
               Row(
                 children: [
                   Expanded(
-                    child: _QuickActionCard(
-                      icon: Icons.account_balance_wallet_outlined,
-                      title: 'Portfolio',
+                    child: _ModernActionTile(
+                      icon: Icons.candlestick_chart_rounded,
+                      title: 'Live Markets',
+                      subtitle: 'NSE & BSE Quotes',
+                      accentColor: AppTheme.primaryEmerald,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const MarketScreen()),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _ModernActionTile(
+                      icon: Icons.auto_awesome_rounded,
+                      title: 'AI What-If',
+                      subtitle: 'Predictive Scenarios',
+                      accentColor: AppTheme.accentPurple,
                       onTap: () {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => const PortfolioScreen(),
+                            builder: (context) => const WhatIfSimulatorScreen(),
                           ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 12),
+
+              Row(
+                children: [
+                  Expanded(
+                    child: _ModernActionTile(
+                      icon: Icons.account_balance_wallet_rounded,
+                      title: 'Portfolio',
+                      subtitle: 'Holdings & P&L',
+                      accentColor: AppTheme.primaryCyan,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const PortfolioScreen()),
                         ).then((_) => _loadData());
                       },
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: _QuickActionCard(
-                      icon: Icons.analytics_outlined,
-                      title: 'Market',
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const MarketScreen(),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 12),
-
-              Row(
-                children: [
-                  Expanded(
-                    child: _QuickActionCard(
-                      icon: Icons.bar_chart_outlined,
+                    child: _ModernActionTile(
+                      icon: Icons.analytics_rounded,
                       title: 'Analytics',
+                      subtitle: 'Sector Breakdown',
+                      accentColor: const Color(0xFFF59E0B),
                       onTap: () {
                         Navigator.push(
                           context,
-                          MaterialPageRoute(
-                            builder: (context) => const AnalyticsScreen(),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _QuickActionCard(
-                      icon: Icons.auto_awesome,
-                      title: 'What-If',
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) =>
-                                const WhatIfSimulatorScreen(),
-                          ),
+                          MaterialPageRoute(builder: (context) => const AnalyticsScreen()),
                         );
                       },
                     ),
@@ -254,42 +510,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ],
               ),
 
-              const SizedBox(height: 12),
+              const SizedBox(height: 26),
 
-              SizedBox(
-                width: double.infinity,
-                child: _QuickActionCard(
-                  icon: Icons.star_outline,
-                  title: 'Watchlist',
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const WatchlistScreen(),
-                      ),
-                    ).then((_) => _loadData());
-                  },
-                ),
-              ),
-
-              const SizedBox(height: 28),
-
-              // Watchlist
+              // Trending Indian Stocks / Watchlist Section
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    'Watchlist',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
+                    _watchlist.isNotEmpty ? 'My Watchlist (${_watchlist.length})' : 'Trending Indian Equities',
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                   TextButton(
                     onPressed: () {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => const WatchlistScreen(),
+                          builder: (context) => _watchlist.isNotEmpty
+                              ? const WatchlistScreen()
+                              : const MarketScreen(),
                         ),
                       ).then((_) => _loadData());
                     },
@@ -297,172 +535,82 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ],
               ),
-
               const SizedBox(height: 8),
 
-              if (_watchlist.isNotEmpty)
-                ..._watchlist.take(3).map((item) {
+              if ((_watchlist.isNotEmpty ? _watchlist : _trendingStocks).isNotEmpty)
+                ...(_watchlist.isNotEmpty ? _watchlist : _trendingStocks).take(4).map((item) {
+                  final sym = item['symbol'] ?? '';
+                  final name = item['companyName'] ?? item['name'] ?? sym;
+                  final price = ((item['currentPrice'] ?? 0.0) as num).toDouble();
                   final chg = ((item['changePercent'] ?? 0.0) as num).toDouble();
                   final isPos = chg >= 0;
-                  final price = ((item['currentPrice'] ?? 0.0) as num).toDouble();
-                  final name = item['name'] ?? item['companyName'] ?? item['symbol'] ?? 'Stock';
-                  final sym = item['symbol'] ?? '';
 
-                  return _StockCard(
-                    companyName: name,
-                    symbol: sym,
-                    price: '₹${price.toStringAsFixed(2)}',
-                    change: '${isPos ? '+' : ''}${chg.toStringAsFixed(2)}%',
-                    isPositive: isPos,
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => StockDetailsScreen(
-                            companyName: name,
-                            symbol: sym,
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    child: Material(
+                      color: isDark ? AppTheme.darkSurface : Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        side: BorderSide(
+                          color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder,
+                        ),
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                      leading: CircleAvatar(
+                        backgroundColor: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                        child: Text(
+                          sym.length > 2 ? sym.substring(0, 2) : sym,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                            color: AppTheme.primaryEmerald,
                           ),
                         ),
-                      ).then((_) => _loadData());
-                    },
-                  );
-                })
-              else ...[
-                _StockCard(
-                  companyName: 'Reliance Industries',
-                  symbol: 'RELIANCE',
-                  price: '₹2,945.50',
-                  change: '+1.25%',
-                  isPositive: true,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const StockDetailsScreen(
-                          companyName: 'Reliance Industries',
-                          symbol: 'RELIANCE',
-                        ),
                       ),
-                    );
-                  },
-                ),
-                _StockCard(
-                  companyName: 'Tata Consultancy Services',
-                  symbol: 'TCS',
-                  price: '₹4,125.80',
-                  change: '+0.82%',
-                  isPositive: true,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const StockDetailsScreen(
-                          companyName: 'Tata Consultancy Services',
-                          symbol: 'TCS',
-                        ),
+                      title: Text(
+                        name,
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                       ),
-                    );
-                  },
-                ),
-                _StockCard(
-                  companyName: 'Infosys',
-                  symbol: 'INFY',
-                  price: '₹1,485.20',
-                  change: '-0.45%',
-                  isPositive: false,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const StockDetailsScreen(
-                          companyName: 'Infosys',
-                          symbol: 'INFY',
-                        ),
+                      subtitle: Text(
+                        sym,
+                        style: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
                       ),
-                    );
-                  },
-                ),
-              ],
-
-              const SizedBox(height: 28),
-
-              // Market Overview
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Market Overview',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                  ),
-                  TextButton(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const MarketScreen(),
-                        ),
-                      );
-                    },
-                    child: const Text('View Market'),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 16),
-
-              Row(
-                children: [
-                  Expanded(
-                    child: _MarketCard(
-                      title: _indices.isNotEmpty ? _indices[0].name : 'NIFTY 50',
-                      value: _indices.isNotEmpty
-                          ? _indices[0].value.toStringAsFixed(2)
-                          : '25,350.20',
-                      change: _indices.isNotEmpty
-                          ? '${_indices[0].changePercent >= 0 ? '+' : ''}${_indices[0].changePercent.toStringAsFixed(2)}%'
-                          : '+0.72%',
-                      isPositive: _indices.isNotEmpty
-                          ? _indices[0].changePercent >= 0
-                          : true,
+                      trailing: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            '₹${price.toStringAsFixed(2)}',
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${isPos ? '+' : ''}${chg.toStringAsFixed(2)}%',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: isPos ? AppTheme.successGreen : AppTheme.dangerRed,
+                            ),
+                          ),
+                        ],
+                      ),
                       onTap: () {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => const MarketScreen(),
+                            builder: (context) => StockDetailsScreen(
+                              companyName: name,
+                              symbol: sym,
+                            ),
                           ),
                         );
                       },
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _MarketCard(
-                      title: _indices.length > 1 ? _indices[1].name : 'SENSEX',
-                      value: _indices.length > 1
-                          ? _indices[1].value.toStringAsFixed(2)
-                          : '82,450.30',
-                      change: _indices.length > 1
-                          ? '${_indices[1].changePercent >= 0 ? '+' : ''}${_indices[1].changePercent.toStringAsFixed(2)}%'
-                          : '+0.58%',
-                      isPositive: _indices.length > 1
-                          ? _indices[1].changePercent >= 0
-                          : true,
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const MarketScreen(),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 30),
+                );
+              }),
             ],
           ),
         ),
@@ -471,194 +619,69 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 }
 
-class _QuickActionCard extends StatelessWidget {
+class _ModernActionTile extends StatelessWidget {
   final IconData icon;
   final String title;
+  final String subtitle;
+  final Color accentColor;
   final VoidCallback onTap;
 
-  const _QuickActionCard({
+  const _ModernActionTile({
     required this.icon,
     required this.title,
+    required this.subtitle,
+    required this.accentColor,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                size: 30,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              const SizedBox(width: 10),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? AppTheme.darkSurface : Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: isDark ? AppTheme.darkBorder : AppTheme.lightBorder,
         ),
       ),
-    );
-  }
-}
-
-class _StockCard extends StatelessWidget {
-  final String companyName;
-  final String symbol;
-  final String price;
-  final String change;
-  final bool isPositive;
-  final VoidCallback onTap;
-
-  const _StockCard({
-    required this.companyName,
-    required this.symbol,
-    required this.price,
-    required this.change,
-    required this.isPositive,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              CircleAvatar(
-                backgroundColor:
-                    Theme.of(context).colorScheme.primaryContainer,
-                child: Icon(
-                  Icons.show_chart,
-                  color: Theme.of(context).colorScheme.primary,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: accentColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(icon, color: accentColor, size: 22),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      companyName,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      symbol,
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
+                const SizedBox(height: 12),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    price,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                    ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFF94A3B8),
                   ),
-                  const SizedBox(height: 3),
-                  Text(
-                    change,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      color: isPositive ? Colors.green : Colors.red,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(width: 8),
-              const Icon(
-                Icons.chevron_right,
-                size: 20,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _MarketCard extends StatelessWidget {
-  final String title;
-  final String value;
-  final String change;
-  final bool isPositive;
-  final VoidCallback onTap;
-
-  const _MarketCard({
-    required this.title,
-    required this.value,
-    required this.change,
-    required this.isPositive,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
                 ),
-              ),
-              const SizedBox(height: 5),
-              Row(
-                children: [
-                  Icon(
-                    isPositive
-                        ? Icons.trending_up
-                        : Icons.trending_down,
-                    size: 16,
-                    color: isPositive ? Colors.green : Colors.red,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    change,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      color: isPositive ? Colors.green : Colors.red,
-                    ),
-                  ),
-                ],
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

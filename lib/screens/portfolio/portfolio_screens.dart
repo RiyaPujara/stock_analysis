@@ -7,7 +7,8 @@ import '../../services/portfolio_service.dart';
 import '../../models/holding.dart';
 
 class PortfolioScreen extends StatefulWidget {
-  const PortfolioScreen({super.key});
+  final bool showAppBar;
+  const PortfolioScreen({super.key, this.showAppBar = false});
 
   @override
   State<PortfolioScreen> createState() => _PortfolioScreenState();
@@ -94,16 +95,18 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
     final invested = (_summary?['totalInvested'] ?? 112550.0) as num;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('My Portfolio'),
-        actions: [
-          IconButton(
-            onPressed: () => _openAddHolding(context),
-            icon: const Icon(Icons.add),
-            tooltip: 'Add Holding',
-          ),
-        ],
-      ),
+      appBar: widget.showAppBar
+          ? AppBar(
+              title: const Text('My Portfolio'),
+              actions: [
+                IconButton(
+                  onPressed: () => _openAddHolding(context),
+                  icon: const Icon(Icons.add),
+                  tooltip: 'Add Holding',
+                ),
+              ],
+            )
+          : null,
       body: RefreshIndicator(
         onRefresh: _loadData,
         child: SingleChildScrollView(

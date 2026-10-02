@@ -5,10 +5,12 @@ import '../auth/login_screen.dart';
 import '../notifications/notification_screen.dart';
 import '../settings/settings_screen.dart';
 import '../../services/auth_service.dart';
+import '../../services/gemini_service.dart';
 import '../../utils/theme_controller.dart';
 
 class ProfileScreen extends StatelessWidget {
-  const ProfileScreen({super.key});
+  final bool showAppBar;
+  const ProfileScreen({super.key, this.showAppBar = false});
 
   @override
   Widget build(BuildContext context) {
@@ -17,9 +19,11 @@ class ProfileScreen extends StatelessWidget {
     final userEmail = user?.email ?? 'riya@example.com';
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Profile'),
-      ),
+      appBar: showAppBar
+          ? AppBar(
+              title: const Text('Profile'),
+            )
+          : null,
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -108,6 +112,28 @@ class ProfileScreen extends StatelessWidget {
             ),
 
             _ProfileTile(
+              icon: Icons.auto_awesome_rounded,
+              title: 'Gemini AI API Key',
+              subtitle: 'Configure your key for What-If scenario simulations',
+              onTap: () {
+                _showGeminiKeyDialog(context);
+              },
+            ),
+
+            _ProfileTile(
+              icon: Icons.hub_outlined,
+              title: 'Indian Stock Market API',
+              subtitle: '0xramm Real-Time Engine (Active)',
+              onTap: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Connected to 0xramm Indian Stock Market API (NSE/BSE realtime)'),
+                  ),
+                );
+              },
+            ),
+
+            _ProfileTile(
               icon: Icons.settings_outlined,
               title: 'Settings',
               subtitle: 'App preferences and account settings',
@@ -165,6 +191,61 @@ class ProfileScreen extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  void _showGeminiKeyDialog(BuildContext context) {
+    final keyController = TextEditingController(text: GeminiService.userApiKey ?? '');
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.auto_awesome_rounded, color: Color(0xFF8B5CF6)),
+              SizedBox(width: 8),
+              Text('Gemini AI API Key'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Enter your Google Gemini API key to enable live cloud model inference for What-If scenario simulations.',
+                style: TextStyle(fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: keyController,
+                decoration: const InputDecoration(
+                  labelText: 'Google Gemini API Key',
+                  hintText: 'AIzaSy...',
+                  prefixIcon: Icon(Icons.security),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                GeminiService.userApiKey = keyController.text.trim();
+                Navigator.pop(dialogContext);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Gemini API key saved! Ready for live What-If analyses.'),
+                  ),
+                );
+              },
+              child: const Text('Save Key'),
+            ),
+          ],
+        );
+      },
     );
   }
 
