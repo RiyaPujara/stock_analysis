@@ -1,229 +1,309 @@
 import 'package:flutter/material.dart';
+import '../../services/portfolio_service.dart';
+import '../../models/holding.dart';
 
-class PortfolioDetailsScreen extends StatelessWidget {
+class PortfolioDetailsScreen extends StatefulWidget {
   const PortfolioDetailsScreen({super.key});
 
   @override
+  State<PortfolioDetailsScreen> createState() => _PortfolioDetailsScreenState();
+}
+
+class _PortfolioDetailsScreenState extends State<PortfolioDetailsScreen> {
+  Map<String, dynamic>? _summary;
+  List<Holding> _holdings = [];
+  List<Map<String, dynamic>> _transactions = [];
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    final summary = await PortfolioService.instance.getSummary();
+    final holdings = await PortfolioService.instance.getHoldings();
+    final transactions = await PortfolioService.instance.getTransactions();
+
+    if (mounted) {
+      setState(() {
+        _summary = summary;
+        _holdings = holdings;
+        _transactions = transactions.map((t) => t.toJson()).toList();
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final totalValue = (_summary?['totalValue'] ?? 125000.0) as num;
+    final totalGainLoss = (_summary?['totalGainLoss'] ?? 12450.0) as num;
+    final totalGainLossPercent =
+        (_summary?['totalGainLossPercent'] ?? 11.05) as num;
+    final isOverallPositive = totalGainLoss >= 0;
+
+    final invested = (_summary?['totalInvested'] ?? 112550.0) as num;
+    final todayGainPercent = (_summary?['todayGainPercent'] ?? 1.98) as num;
+    final isTodayPositive = todayGainPercent >= 0;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Portfolio Details'),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Portfolio Value
-            Card(
-              child: Padding(
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : RefreshIndicator(
+              onRefresh: _loadData,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Current Value',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      '₹1,25,000.00',
-                      style: TextStyle(
-                        fontSize: 30,
-                        fontWeight: FontWeight.bold,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Portfolio Value
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Current Value',
+                        style: Theme.of(context).textTheme.bodyMedium,
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.trending_up,
-                          color: Colors.green,
-                          size: 20,
+                      const SizedBox(height: 8),
+                      Text(
+                        '₹${totalValue.toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          fontSize: 30,
+                          fontWeight: FontWeight.bold,
                         ),
-                        const SizedBox(width: 6),
-                        const Text(
-                          '+₹12,450 (11.05%)',
-                          style: TextStyle(
-                            color: Colors.green,
-                            fontWeight: FontWeight.w600,
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Icon(
+                            isOverallPositive
+                                ? Icons.trending_up
+                                : Icons.trending_down,
+                            color: isOverallPositive ? Colors.green : Colors.red,
+                            size: 20,
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            // Performance Summary
-            Text(
-              'Performance Summary',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-            ),
-
-            const SizedBox(height: 16),
-
-            Row(
-              children: [
-                Expanded(
-                  child: _SummaryCard(
-                    title: 'Invested',
-                    value: '₹1,12,550',
-                    icon: Icons.account_balance_wallet_outlined,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _SummaryCard(
-                    title: 'Total Gain',
-                    value: '+₹12,450',
-                    icon: Icons.trending_up,
-                    isPositive: true,
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 12),
-
-            Row(
-              children: [
-                Expanded(
-                  child: _SummaryCard(
-                    title: 'Holdings',
-                    value: '4 Stocks',
-                    icon: Icons.pie_chart_outline,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _SummaryCard(
-                    title: 'Today',
-                    value: '+1.98%',
-                    icon: Icons.show_chart,
-                    isPositive: true,
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 28),
-
-            // Portfolio Allocation
-            Text(
-              'Portfolio Allocation',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-            ),
-
-            const SizedBox(height: 16),
-
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(18),
-                child: Column(
-                  children: [
-                    _AllocationItem(
-                      name: 'Reliance Industries',
-                      symbol: 'RELIANCE',
-                      percentage: '23.6%',
-                      value: '₹29,455',
-                    ),
-                    const Divider(height: 28),
-                    _AllocationItem(
-                      name: 'Tata Consultancy Services',
-                      symbol: 'TCS',
-                      percentage: '16.5%',
-                      value: '₹20,629',
-                    ),
-                    const Divider(height: 28),
-                    _AllocationItem(
-                      name: 'Infosys',
-                      symbol: 'INFY',
-                      percentage: '11.9%',
-                      value: '₹14,852',
-                    ),
-                    const Divider(height: 28),
-                    _AllocationItem(
-                      name: 'HDFC Bank',
-                      symbol: 'HDFCBANK',
-                      percentage: '12.0%',
-                      value: '₹15,003',
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 28),
-
-            // Transaction History
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Transaction History',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
+                          const SizedBox(width: 6),
+                          Text(
+                            '${isOverallPositive ? '+' : ''}₹${totalGainLoss.abs().toStringAsFixed(2)} (${isOverallPositive ? '+' : ''}${totalGainLossPercent.toStringAsFixed(2)}%)',
+                            style: TextStyle(
+                              color:
+                                  isOverallPositive ? Colors.green : Colors.red,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ),
+                    ],
+                  ),
                 ),
-                TextButton(
-                  onPressed: () {},
-                  child: const Text('View All'),
+              ),
+
+              const SizedBox(height: 24),
+
+              // Performance Summary
+              Text(
+                'Performance Summary',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+
+              const SizedBox(height: 16),
+
+              Row(
+                children: [
+                  Expanded(
+                    child: _SummaryCard(
+                      title: 'Invested',
+                      value: '₹${invested.toStringAsFixed(2)}',
+                      icon: Icons.account_balance_wallet_outlined,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _SummaryCard(
+                      title: 'Total Gain',
+                      value:
+                          '${isOverallPositive ? '+' : ''}₹${totalGainLoss.abs().toStringAsFixed(2)}',
+                      icon: isOverallPositive
+                          ? Icons.trending_up
+                          : Icons.trending_down,
+                      isPositive: isOverallPositive,
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 12),
+
+              Row(
+                children: [
+                  Expanded(
+                    child: _SummaryCard(
+                      title: 'Holdings',
+                      value: '${_holdings.isNotEmpty ? _holdings.length : 4} Stocks',
+                      icon: Icons.pie_chart_outline,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _SummaryCard(
+                      title: 'Today',
+                      value:
+                          '${isTodayPositive ? '+' : ''}${todayGainPercent.toStringAsFixed(2)}%',
+                      icon: Icons.show_chart,
+                      isPositive: isTodayPositive,
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 28),
+
+              // Portfolio Allocation
+              Text(
+                'Portfolio Allocation',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+
+              const SizedBox(height: 16),
+
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: Column(
+                    children: _holdings.isNotEmpty
+                        ? _holdings.map((h) {
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              child: _AllocationItem(
+                                name: h.stockName.isNotEmpty
+                                    ? h.stockName
+                                    : h.stockSymbol,
+                                symbol: h.stockSymbol,
+                                percentage:
+                                    '${h.allocationPercent.toStringAsFixed(1)}%',
+                                value: '₹${h.totalValue.toStringAsFixed(2)}',
+                              ),
+                            );
+                          }).toList()
+                        : [
+                            const _AllocationItem(
+                              name: 'Reliance Industries',
+                              symbol: 'RELIANCE',
+                              percentage: '23.6%',
+                              value: '₹29,455',
+                            ),
+                            const Divider(height: 28),
+                            const _AllocationItem(
+                              name: 'Tata Consultancy Services',
+                              symbol: 'TCS',
+                              percentage: '16.5%',
+                              value: '₹20,629',
+                            ),
+                            const Divider(height: 28),
+                            const _AllocationItem(
+                              name: 'Infosys',
+                              symbol: 'INFY',
+                              percentage: '11.9%',
+                              value: '₹14,852',
+                            ),
+                          ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 28),
+
+              // Transaction History
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Transaction History',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
+                  TextButton(
+                    onPressed: _loadData,
+                    child: const Text('Refresh'),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 8),
+
+              if (_transactions.isNotEmpty)
+                ..._transactions.map((t) {
+                  final type = (t['type'] ?? 'BUY').toString().toUpperCase();
+                  final isBuy = type != 'SELL';
+                  final sym = t['symbol'] ?? '';
+                  final name = t['stockName'] ?? sym;
+                  final qty = t['quantity'] ?? 0;
+                  final price = (t['price'] as num?)?.toDouble() ?? 0.0;
+                  final date = t['createdAt'] != null
+                      ? t['createdAt'].toString().substring(0, 10)
+                      : 'Recent';
+
+                  return _TransactionCard(
+                    companyName: name,
+                    symbol: sym,
+                    type: type,
+                    quantity: '$qty shares',
+                    price: '₹${price.toStringAsFixed(2)}',
+                    date: date,
+                    isBuy: isBuy,
+                  );
+                })
+              else ...[
+                const _TransactionCard(
+                  companyName: 'Reliance Industries',
+                  symbol: 'RELIANCE',
+                  type: 'Buy',
+                  quantity: '10 shares',
+                  price: '₹2,850',
+                  date: '20 Sep 2026',
+                  isBuy: true,
+                ),
+                const _TransactionCard(
+                  companyName: 'Tata Consultancy Services',
+                  symbol: 'TCS',
+                  type: 'Buy',
+                  quantity: '5 shares',
+                  price: '₹3,950',
+                  date: '18 Sep 2026',
+                  isBuy: true,
+                ),
+                const _TransactionCard(
+                  companyName: 'Infosys',
+                  symbol: 'INFY',
+                  type: 'Buy',
+                  quantity: '10 shares',
+                  price: '₹1,520',
+                  date: '15 Sep 2026',
+                  isBuy: true,
                 ),
               ],
-            ),
 
-            const SizedBox(height: 8),
-
-            _TransactionCard(
-              companyName: 'Reliance Industries',
-              symbol: 'RELIANCE',
-              type: 'Buy',
-              quantity: '10 shares',
-              price: '₹2,850',
-              date: '20 Sep 2026',
-              isBuy: true,
-            ),
-
-            _TransactionCard(
-              companyName: 'Tata Consultancy Services',
-              symbol: 'TCS',
-              type: 'Buy',
-              quantity: '5 shares',
-              price: '₹3,950',
-              date: '18 Sep 2026',
-              isBuy: true,
-            ),
-
-            _TransactionCard(
-              companyName: 'Infosys',
-              symbol: 'INFY',
-              type: 'Buy',
-              quantity: '10 shares',
-              price: '₹1,520',
-              date: '15 Sep 2026',
-              isBuy: true,
-            ),
-
-            _TransactionCard(
-              companyName: 'HDFC Bank',
-              symbol: 'HDFCBANK',
-              type: 'Buy',
-              quantity: '8 shares',
-              price: '₹1,810',
-              date: '12 Sep 2026',
-              isBuy: true,
-            ),
-
-            const SizedBox(height: 30),
-          ],
+              const SizedBox(height: 30),
+            ],
+          ),
         ),
       ),
     );

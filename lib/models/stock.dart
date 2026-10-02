@@ -19,10 +19,12 @@ class Stock {
 
   factory Stock.fromJson(Map<String, dynamic> json) {
     return Stock(
-      id: json['id'],
-      symbol: json['symbol'],
-      companyName: json['companyName'],
-      exchange: json['exchange'],
+      id: json['id'] is int
+          ? json['id']
+          : int.tryParse(json['id']?.toString() ?? '1') ?? 1,
+      symbol: json['symbol'] ?? '',
+      companyName: json['companyName'] ?? '',
+      exchange: json['exchange'] ?? 'NSE',
       sector: json['sector'],
       industry: json['industry'],
       description: json['description'],

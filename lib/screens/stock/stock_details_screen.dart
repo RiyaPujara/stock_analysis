@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import '../../services/market_service.dart';
+import '../../services/watchlist_service.dart';
+import '../alerts/alerts_screen.dart';
 
-class StockDetailsScreen extends StatelessWidget {
+class StockDetailsScreen extends StatefulWidget {
   final String companyName;
   final String symbol;
 
@@ -11,25 +14,158 @@ class StockDetailsScreen extends StatelessWidget {
   });
 
   @override
+  State<StockDetailsScreen> createState() => _StockDetailsScreenState();
+}
+
+class _StockDetailsScreenState extends State<StockDetailsScreen> {
+  Map<String, dynamic>? _details;
+  Map<String, dynamic>? _fundamentals;
+  bool _isLoading = true;
+  bool _isWatchlisted = false;
+  bool _isAddingToWatchlist = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    final details = await MarketService.instance.getStockDetails(widget.symbol);
+    final fundamentals =
+        await MarketService.instance.getFundamentals(widget.symbol);
+
+    if (mounted) {
+      setState(() {
+        _details = details;
+        _fundamentals = fundamentals.toJson();
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _toggleWatchlist() async {
+    setState(() {
+      _isAddingToWatchlist = true;
+    });
+
+    try {
+      if (_isWatchlisted) {
+        await WatchlistService.instance.removeFromWatchlist(widget.symbol);
+        setState(() {
+          _isWatchlisted = false;
+        });
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${widget.symbol} removed from watchlist'),
+          ),
+        );
+      } else {
+        await WatchlistService.instance.addToWatchlist(widget.symbol);
+        setState(() {
+          _isWatchlisted = true;
+        });
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${widget.symbol} added to watchlist'),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString()),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isAddingToWatchlist = false;
+        });
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final currentPrice =
+        ((_details?['currentPrice'] ?? 2945.50) as num).toDouble();
+    final change = ((_details?['change'] ?? 36.40) as num).toDouble();
+    final changePercent =
+        ((_details?['changePercent'] ?? 1.25) as num).toDouble();
+    final isPositive = change >= 0;
+
+    final open = ((_details?['open'] ?? 2910.00) as num).toDouble();
+    final high = ((_details?['dayHigh'] ?? 2970.00) as num).toDouble();
+    final low = ((_details?['dayLow'] ?? 2895.00) as num).toDouble();
+    final prevClose =
+        ((_details?['previousClose'] ?? 2909.10) as num).toDouble();
+    final volume = _details?['volume'] != null
+        ? '${((_details!['volume'] as num) / 1000000).toStringAsFixed(2)}M'
+        : '8.42M';
+    final high52 =
+        ((_details?['fiftyTwoWeekHigh'] ?? 3024.90) as num).toDouble();
+    final low52 = ((_details?['fiftyTwoWeekLow'] ?? 2221.00) as num).toDouble();
+
+    final marketCap = _fundamentals?['marketCap'] != null
+        ? '₹${((_fundamentals!['marketCap'] as num) / 1000000000000).toStringAsFixed(2)}T'
+        : '₹19.95T';
+    final peRatio = _fundamentals?['peRatio'] != null
+        ? ((_fundamentals!['peRatio'] as num)).toStringAsFixed(2)
+        : '24.82';
+    final dividendYield = _fundamentals?['dividendYield'] != null
+        ? '${((_fundamentals!['dividendYield'] as num)).toStringAsFixed(2)}%'
+        : '0.38%';
+    final eps = _fundamentals?['eps'] != null
+        ? '₹${((_fundamentals!['eps'] as num)).toStringAsFixed(2)}'
+        : '₹118.62';
+
     return Scaffold(
       appBar: AppBar(
-        title: Text(symbol),
+        title: Text(widget.symbol),
         actions: [
           IconButton(
-            onPressed: () {},
-            icon: const Icon(Icons.star_border),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => AlertsScreen(
+                    initialSymbol: widget.symbol,
+                    initialPrice: currentPrice,
+                  ),
+                ),
+              );
+            },
+            icon: const Icon(Icons.add_alert_outlined),
+            tooltip: 'Set Price Alert',
+          ),
+          IconButton(
+            onPressed: _isAddingToWatchlist ? null : _toggleWatchlist,
+            icon: Icon(
+              _isWatchlisted ? Icons.star : Icons.star_border,
+              color: _isWatchlisted ? Colors.amber : null,
+            ),
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Company Name
             Text(
-              companyName,
+              _details?['name'] ?? widget.companyName,
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
@@ -38,16 +174,16 @@ class StockDetailsScreen extends StatelessWidget {
             const SizedBox(height: 6),
 
             Text(
-              symbol,
+              widget.symbol,
               style: Theme.of(context).textTheme.bodyMedium,
             ),
 
             const SizedBox(height: 20),
 
             // Current Price
-            const Text(
-              '₹2,945.50',
-              style: TextStyle(
+            Text(
+              '₹${currentPrice.toStringAsFixed(2)}',
+              style: const TextStyle(
                 fontSize: 32,
                 fontWeight: FontWeight.bold,
               ),
@@ -57,16 +193,16 @@ class StockDetailsScreen extends StatelessWidget {
 
             Row(
               children: [
-                const Icon(
-                  Icons.trending_up,
-                  color: Colors.green,
+                Icon(
+                  isPositive ? Icons.trending_up : Icons.trending_down,
+                  color: isPositive ? Colors.green : Colors.red,
                   size: 20,
                 ),
                 const SizedBox(width: 5),
-                const Text(
-                  '+₹36.40 (+1.25%)',
+                Text(
+                  '${isPositive ? '+' : ''}₹${change.abs().toStringAsFixed(2)} (${isPositive ? '+' : ''}${changePercent.toStringAsFixed(2)}%)',
                   style: TextStyle(
-                    color: Colors.green,
+                    color: isPositive ? Colors.green : Colors.red,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -138,31 +274,31 @@ class StockDetailsScreen extends StatelessWidget {
                   children: [
                     _StatRow(
                       title: 'Open',
-                      value: '₹2,910.00',
+                      value: '₹${open.toStringAsFixed(2)}',
                     ),
                     _StatRow(
                       title: 'Day High',
-                      value: '₹2,970.00',
+                      value: '₹${high.toStringAsFixed(2)}',
                     ),
                     _StatRow(
                       title: 'Day Low',
-                      value: '₹2,895.00',
+                      value: '₹${low.toStringAsFixed(2)}',
                     ),
                     _StatRow(
                       title: 'Previous Close',
-                      value: '₹2,909.10',
+                      value: '₹${prevClose.toStringAsFixed(2)}',
                     ),
                     _StatRow(
                       title: 'Volume',
-                      value: '8.42M',
+                      value: volume,
                     ),
                     _StatRow(
                       title: '52 Week High',
-                      value: '₹3,024.90',
+                      value: '₹${high52.toStringAsFixed(2)}',
                     ),
                     _StatRow(
                       title: '52 Week Low',
-                      value: '₹2,221.00',
+                      value: '₹${low52.toStringAsFixed(2)}',
                     ),
                   ],
                 ),
@@ -186,14 +322,14 @@ class StockDetailsScreen extends StatelessWidget {
                 Expanded(
                   child: _FundamentalCard(
                     title: 'Market Cap',
-                    value: '₹19.95T',
+                    value: marketCap,
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: _FundamentalCard(
                     title: 'P/E Ratio',
-                    value: '24.82',
+                    value: peRatio,
                   ),
                 ),
               ],
@@ -206,14 +342,14 @@ class StockDetailsScreen extends StatelessWidget {
                 Expanded(
                   child: _FundamentalCard(
                     title: 'Dividend Yield',
-                    value: '0.38%',
+                    value: dividendYield,
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: _FundamentalCard(
                     title: 'EPS',
-                    value: '₹118.62',
+                    value: eps,
                   ),
                 ),
               ],
@@ -226,9 +362,13 @@ class StockDetailsScreen extends StatelessWidget {
               width: double.infinity,
               height: 52,
               child: FilledButton.icon(
-                onPressed: () {},
-                icon: const Icon(Icons.star_border),
-                label: const Text('Add to Watchlist'),
+                onPressed: _isAddingToWatchlist ? null : _toggleWatchlist,
+                icon: Icon(_isWatchlisted ? Icons.star : Icons.star_border),
+                label: Text(
+                  _isWatchlisted
+                      ? 'Remove from Watchlist'
+                      : 'Add to Watchlist',
+                ),
               ),
             ),
 

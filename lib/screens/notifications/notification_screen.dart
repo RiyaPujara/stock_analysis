@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../services/notification_service.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -8,43 +9,22 @@ class NotificationsScreen extends StatefulWidget {
 }
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
-  final List<Map<String, dynamic>> _notifications = [
-    {
-      'title': 'Price Alert',
-      'message': 'Reliance Industries crossed ₹2,900.',
-      'time': '10 minutes ago',
-      'icon': Icons.trending_up,
-      'isRead': false,
-    },
-    {
-      'title': 'Portfolio Update',
-      'message': 'Your portfolio gained ₹1,250 today.',
-      'time': '1 hour ago',
-      'icon': Icons.account_balance_wallet_outlined,
-      'isRead': false,
-    },
-    {
-      'title': 'Market Update',
-      'message': 'NIFTY 50 is up by 0.72% today.',
-      'time': '2 hours ago',
-      'icon': Icons.analytics_outlined,
-      'isRead': true,
-    },
-    {
-      'title': 'Watchlist Alert',
-      'message': 'TCS price changed by +0.82%.',
-      'time': '3 hours ago',
-      'icon': Icons.star_outline,
-      'isRead': true,
-    },
-    {
-      'title': 'Market Opening',
-      'message': 'Indian markets opened today at 9:15 AM.',
-      'time': 'Yesterday',
-      'icon': Icons.notifications_outlined,
-      'isRead': true,
-    },
-  ];
+  List<Map<String, dynamic>> _notifications = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadNotifications();
+  }
+
+  Future<void> _loadNotifications() async {
+    final list = await NotificationService.instance.getNotifications();
+    if (mounted) {
+      setState(() {
+        _notifications = list;
+      });
+    }
+  }
 
   int get _unreadCount {
     return _notifications.where((notification) {
@@ -52,13 +32,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }).length;
   }
 
-  void _markAllAsRead() {
+  Future<void> _markAllAsRead() async {
+    await NotificationService.instance.markAllAsRead();
     setState(() {
       for (final notification in _notifications) {
         notification['isRead'] = true;
       }
     });
 
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('All notifications marked as read'),
@@ -66,13 +48,18 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 
-  void _markAsRead(int index) {
+  Future<void> _markAsRead(int index) async {
+    final id = _notifications[index]['id']?.toString();
+    if (id != null) {
+      await NotificationService.instance.markAsRead(id);
+    }
     setState(() {
       _notifications[index]['isRead'] = true;
     });
   }
 
-  void _clearAll() {
+  Future<void> _clearAll() async {
+    await NotificationService.instance.clearAll();
     setState(() {
       _notifications.clear();
     });

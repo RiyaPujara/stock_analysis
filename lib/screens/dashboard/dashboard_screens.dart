@@ -8,12 +8,50 @@ import '../portfolio/portfolio_screens.dart';
 import '../simulator/what_if_simulator_screen.dart';
 import '../stock/stock_details_screen.dart';
 import '../watchlist/watchlist_screen.dart';
+import '../../services/portfolio_service.dart';
+import '../../services/market_service.dart';
+import '../../services/watchlist_service.dart';
+import '../../models/market_index.dart';
 
-class DashboardScreen extends StatelessWidget {
+class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
   @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  Map<String, dynamic>? _summary;
+  List<MarketIndex> _indices = [];
+  List<Map<String, dynamic>> _watchlist = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    final summary = await PortfolioService.instance.getSummary();
+    final indices = await MarketService.instance.getIndices();
+    final watchlist = await WatchlistService.instance.getWatchlist();
+
+    if (mounted) {
+      setState(() {
+        _summary = summary;
+        _indices = indices;
+        _watchlist = watchlist;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final totalValue = (_summary?['totalValue'] ?? 125000.0) as num;
+    final todayGain = (_summary?['todayGain'] ?? 2450.0) as num;
+    final todayGainPercent = (_summary?['todayGainPercent'] ?? 1.98) as num;
+    final isPositiveGain = todayGain >= 0;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Dashboard'),
@@ -31,328 +69,335 @@ class DashboardScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Good Evening 👋',
-              style: Theme.of(context).textTheme.bodyLarge,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Welcome back!',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-            ),
-            const SizedBox(height: 24),
-
-            // Portfolio Summary
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary,
-                borderRadius: BorderRadius.circular(20),
+      body: RefreshIndicator(
+        onRefresh: _loadData,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Good Evening 👋',
+                style: Theme.of(context).textTheme.bodyLarge,
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Total Portfolio Value',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onPrimary,
-                      fontSize: 14,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '₹1,25,000.00',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onPrimary,
-                      fontSize: 30,
+              const SizedBox(height: 4),
+              Text(
+                'Welcome back!',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.bold,
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.trending_up,
+              ),
+              const SizedBox(height: 24),
+
+              // Portfolio Summary
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primary,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Total Portfolio Value',
+                      style: TextStyle(
                         color: Theme.of(context).colorScheme.onPrimary,
-                        size: 20,
+                        fontSize: 14,
                       ),
-                      const SizedBox(width: 6),
-                      Text(
-                        '+₹2,450 (1.98%)',
-                        style: TextStyle(
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '₹${totalValue.toStringAsFixed(2)}',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onPrimary,
+                        fontSize: 30,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Icon(
+                          isPositiveGain ? Icons.trending_up : Icons.trending_down,
                           color: Theme.of(context).colorScheme.onPrimary,
-                          fontWeight: FontWeight.w600,
+                          size: 20,
                         ),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Today',
-                        style: TextStyle(
+                        const SizedBox(width: 6),
+                        Text(
+                          '${isPositiveGain ? '+' : ''}₹${todayGain.abs().toStringAsFixed(2)} (${isPositiveGain ? '+' : ''}${todayGainPercent.toStringAsFixed(2)}%)',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onPrimary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Today',
+                          style: TextStyle(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onPrimary
+                                .withValues(alpha: 0.8),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    OutlinedButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                const PortfolioDetailsScreen(),
+                          ),
+                        ).then((_) => _loadData());
+                      },
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor:
+                            Theme.of(context).colorScheme.onPrimary,
+                        side: BorderSide(
                           color: Theme.of(context)
                               .colorScheme
                               .onPrimary
-                              .withValues(alpha: 0.8),
+                              .withValues(alpha: 0.6),
                         ),
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  OutlinedButton(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) =>
-                              const PortfolioDetailsScreen(),
-                        ),
-                      );
-                    },
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor:
-                          Theme.of(context).colorScheme.onPrimary,
-                      side: BorderSide(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onPrimary
-                            .withValues(alpha: 0.6),
-                      ),
+                      child: const Text('View Portfolio Details'),
                     ),
-                    child: const Text('View Portfolio Details'),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 28),
+
+              // Quick Actions
+              Text(
+                'Quick Actions',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+              const SizedBox(height: 16),
+
+              Row(
+                children: [
+                  Expanded(
+                    child: _QuickActionCard(
+                      icon: Icons.account_balance_wallet_outlined,
+                      title: 'Portfolio',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const PortfolioScreen(),
+                          ),
+                        ).then((_) => _loadData());
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _QuickActionCard(
+                      icon: Icons.analytics_outlined,
+                      title: 'Market',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const MarketScreen(),
+                          ),
+                        );
+                      },
+                    ),
                   ),
                 ],
               ),
-            ),
 
-            const SizedBox(height: 28),
+              const SizedBox(height: 12),
 
-            // Quick Actions
-            Text(
-              'Quick Actions',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-            ),
-            const SizedBox(height: 16),
-
-            Row(
-              children: [
-                Expanded(
-                  child: _QuickActionCard(
-                    icon: Icons.account_balance_wallet_outlined,
-                    title: 'Portfolio',
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const PortfolioScreen(),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _QuickActionCard(
-                    icon: Icons.analytics_outlined,
-                    title: 'Market',
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const MarketScreen(),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 12),
-
-            Row(
-              children: [
-                Expanded(
-                  child: _QuickActionCard(
-                    icon: Icons.bar_chart_outlined,
-                    title: 'Analytics',
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const AnalyticsScreen(),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _QuickActionCard(
-                    icon: Icons.auto_awesome,
-                    title: 'What-If',
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) =>
-                              const WhatIfSimulatorScreen(),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 12),
-
-            SizedBox(
-              width: double.infinity,
-              child: _QuickActionCard(
-                icon: Icons.star_outline,
-                title: 'Watchlist',
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const WatchlistScreen(),
+              Row(
+                children: [
+                  Expanded(
+                    child: _QuickActionCard(
+                      icon: Icons.bar_chart_outlined,
+                      title: 'Analytics',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const AnalyticsScreen(),
+                          ),
+                        );
+                      },
                     ),
-                  );
-                },
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _QuickActionCard(
+                      icon: Icons.auto_awesome,
+                      title: 'What-If',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                const WhatIfSimulatorScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ),
-            ),
 
-            const SizedBox(height: 28),
+              const SizedBox(height: 12),
 
-            // Watchlist
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Watchlist',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                ),
-                TextButton(
-                  onPressed: () {
+              SizedBox(
+                width: double.infinity,
+                child: _QuickActionCard(
+                  icon: Icons.star_outline,
+                  title: 'Watchlist',
+                  onTap: () {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (context) => const WatchlistScreen(),
                       ),
-                    );
+                    ).then((_) => _loadData());
                   },
-                  child: const Text('View All'),
                 ),
-              ],
-            ),
+              ),
 
-            const SizedBox(height: 8),
+              const SizedBox(height: 28),
 
-            _StockCard(
-              companyName: 'Reliance Industries',
-              symbol: 'RELIANCE',
-              price: '₹2,945.50',
-              change: '+1.25%',
-              isPositive: true,
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const StockDetailsScreen(
-                      companyName: 'Reliance Industries',
-                      symbol: 'RELIANCE',
-                    ),
+              // Watchlist
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Watchlist',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
                   ),
-                );
-              },
-            ),
-
-            _StockCard(
-              companyName: 'Tata Consultancy Services',
-              symbol: 'TCS',
-              price: '₹4,125.80',
-              change: '+0.82%',
-              isPositive: true,
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const StockDetailsScreen(
-                      companyName: 'Tata Consultancy Services',
-                      symbol: 'TCS',
-                    ),
+                  TextButton(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const WatchlistScreen(),
+                        ),
+                      ).then((_) => _loadData());
+                    },
+                    child: const Text('View All'),
                   ),
-                );
-              },
-            ),
+                ],
+              ),
 
-            _StockCard(
-              companyName: 'Infosys',
-              symbol: 'INFY',
-              price: '₹1,485.20',
-              change: '-0.45%',
-              isPositive: false,
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const StockDetailsScreen(
-                      companyName: 'Infosys',
-                      symbol: 'INFY',
-                    ),
-                  ),
-                );
-              },
-            ),
+              const SizedBox(height: 8),
 
-            const SizedBox(height: 28),
+              if (_watchlist.isNotEmpty)
+                ..._watchlist.take(3).map((item) {
+                  final chg = ((item['changePercent'] ?? 0.0) as num).toDouble();
+                  final isPos = chg >= 0;
+                  final price = ((item['currentPrice'] ?? 0.0) as num).toDouble();
+                  final name = item['name'] ?? item['companyName'] ?? item['symbol'] ?? 'Stock';
+                  final sym = item['symbol'] ?? '';
 
-            // Market Overview
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Market Overview',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                ),
-                TextButton(
-                  onPressed: () {
+                  return _StockCard(
+                    companyName: name,
+                    symbol: sym,
+                    price: '₹${price.toStringAsFixed(2)}',
+                    change: '${isPos ? '+' : ''}${chg.toStringAsFixed(2)}%',
+                    isPositive: isPos,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => StockDetailsScreen(
+                            companyName: name,
+                            symbol: sym,
+                          ),
+                        ),
+                      ).then((_) => _loadData());
+                    },
+                  );
+                })
+              else ...[
+                _StockCard(
+                  companyName: 'Reliance Industries',
+                  symbol: 'RELIANCE',
+                  price: '₹2,945.50',
+                  change: '+1.25%',
+                  isPositive: true,
+                  onTap: () {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => const MarketScreen(),
+                        builder: (context) => const StockDetailsScreen(
+                          companyName: 'Reliance Industries',
+                          symbol: 'RELIANCE',
+                        ),
                       ),
                     );
                   },
-                  child: const Text('View Market'),
+                ),
+                _StockCard(
+                  companyName: 'Tata Consultancy Services',
+                  symbol: 'TCS',
+                  price: '₹4,125.80',
+                  change: '+0.82%',
+                  isPositive: true,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const StockDetailsScreen(
+                          companyName: 'Tata Consultancy Services',
+                          symbol: 'TCS',
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                _StockCard(
+                  companyName: 'Infosys',
+                  symbol: 'INFY',
+                  price: '₹1,485.20',
+                  change: '-0.45%',
+                  isPositive: false,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const StockDetailsScreen(
+                          companyName: 'Infosys',
+                          symbol: 'INFY',
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ],
-            ),
 
-            const SizedBox(height: 16),
+              const SizedBox(height: 28),
 
-            Row(
-              children: [
-                Expanded(
-                  child: _MarketCard(
-                    title: 'NIFTY 50',
-                    value: '25,350.20',
-                    change: '+0.72%',
-                    isPositive: true,
-                    onTap: () {
+              // Market Overview
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Market Overview',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
+                  TextButton(
+                    onPressed: () {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -360,30 +405,66 @@ class DashboardScreen extends StatelessWidget {
                         ),
                       );
                     },
+                    child: const Text('View Market'),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _MarketCard(
-                    title: 'SENSEX',
-                    value: '82,450.30',
-                    change: '+0.58%',
-                    isPositive: true,
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const MarketScreen(),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
+                ],
+              ),
 
-            const SizedBox(height: 30),
-          ],
+              const SizedBox(height: 16),
+
+              Row(
+                children: [
+                  Expanded(
+                    child: _MarketCard(
+                      title: _indices.isNotEmpty ? _indices[0].name : 'NIFTY 50',
+                      value: _indices.isNotEmpty
+                          ? _indices[0].value.toStringAsFixed(2)
+                          : '25,350.20',
+                      change: _indices.isNotEmpty
+                          ? '${_indices[0].changePercent >= 0 ? '+' : ''}${_indices[0].changePercent.toStringAsFixed(2)}%'
+                          : '+0.72%',
+                      isPositive: _indices.isNotEmpty
+                          ? _indices[0].changePercent >= 0
+                          : true,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const MarketScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _MarketCard(
+                      title: _indices.length > 1 ? _indices[1].name : 'SENSEX',
+                      value: _indices.length > 1
+                          ? _indices[1].value.toStringAsFixed(2)
+                          : '82,450.30',
+                      change: _indices.length > 1
+                          ? '${_indices[1].changePercent >= 0 ? '+' : ''}${_indices[1].changePercent.toStringAsFixed(2)}%'
+                          : '+0.58%',
+                      isPositive: _indices.length > 1
+                          ? _indices[1].changePercent >= 0
+                          : true,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const MarketScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 30),
+            ],
+          ),
         ),
       ),
     );

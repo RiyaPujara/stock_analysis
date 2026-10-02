@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../stock/stock_details_screen.dart';
+import '../../services/market_service.dart';
+import '../../models/market_index.dart';
 
 class MarketScreen extends StatefulWidget {
   const MarketScreen({super.key});
@@ -14,8 +16,11 @@ class _MarketScreenState extends State<MarketScreen> {
       TextEditingController();
 
   String _searchQuery = '';
+  List<Map<String, dynamic>> _remoteStocks = [];
+  List<MarketIndex> _indices = [];
+  bool _isLoading = false;
 
-  final List<Map<String, dynamic>> _stocks = [
+  final List<Map<String, dynamic>> _fallbackStocks = [
     {
       'companyName': 'Reliance Industries',
       'symbol': 'RELIANCE',
@@ -54,17 +59,67 @@ class _MarketScreenState extends State<MarketScreen> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _loadMarketData();
+  }
+
+  Future<void> _loadMarketData() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    final stocks = await MarketService.instance.searchStocks();
+    final indices = await MarketService.instance.getIndices();
+
+    if (mounted) {
+      setState(() {
+        _remoteStocks = stocks;
+        _indices = indices;
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
   }
 
-  List<Map<String, dynamic>> get _filteredStocks {
-    if (_searchQuery.isEmpty) {
-      return _stocks;
+  List<Map<String, dynamic>> get _displayStocks {
+    if (_remoteStocks.isNotEmpty) {
+      final list = _remoteStocks.map((s) {
+        final name = s['companyName'] ?? s['name'] ?? s['symbol'] ?? '';
+        final sym = s['symbol'] ?? '';
+        final price = s['price'] ?? '₹${((s['currentPrice'] ?? 0.0) as num).toStringAsFixed(2)}';
+        final chgVal = ((s['changePercent'] ?? 0.0) as num).toDouble();
+        final chg = s['change'] ?? '${chgVal >= 0 ? '+' : ''}${chgVal.toStringAsFixed(2)}%';
+        final isPos = s['isPositive'] ?? (chgVal >= 0);
+        return {
+          'companyName': name,
+          'symbol': sym,
+          'price': price,
+          'change': chg,
+          'isPositive': isPos,
+        };
+      }).toList();
+
+      if (_searchQuery.isEmpty) return list;
+
+      return list.where((stock) {
+        final companyName = stock['companyName'].toString().toLowerCase();
+        final symbol = stock['symbol'].toString().toLowerCase();
+        return companyName.contains(_searchQuery) ||
+            symbol.contains(_searchQuery);
+      }).toList();
     }
 
-    return _stocks.where((stock) {
+    if (_searchQuery.isEmpty) {
+      return _fallbackStocks;
+    }
+
+    return _fallbackStocks.where((stock) {
       final companyName =
           stock['companyName'].toString().toLowerCase();
       final symbol =
@@ -85,118 +140,141 @@ class _MarketScreenState extends State<MarketScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final filteredStocks = _filteredStocks;
+    final filteredStocks = _displayStocks;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Market'),
         actions: [
           IconButton(
-            onPressed: () {},
-            icon: const Icon(Icons.notifications_none),
+            onPressed: _loadMarketData,
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Refresh Market',
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Search Bar
-            TextField(
-              controller: _searchController,
-              onChanged: (value) {
-                setState(() {
-                  _searchQuery = value.toLowerCase().trim();
-                });
-              },
-              decoration: InputDecoration(
-                hintText: 'Search stocks...',
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                        onPressed: _clearSearch,
-                        icon: const Icon(Icons.clear),
-                      )
-                    : IconButton(
-                        onPressed: () {},
-                        icon: const Icon(Icons.tune),
-                      ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 28),
-
-            // Market Overview
-            Text(
-              'Market Overview',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
+      body: RefreshIndicator(
+        onRefresh: _loadMarketData,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Search Bar
+              TextField(
+                controller: _searchController,
+                onChanged: (value) {
+                  setState(() {
+                    _searchQuery = value.toLowerCase().trim();
+                  });
+                },
+                decoration: InputDecoration(
+                  hintText: 'Search stocks...',
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? IconButton(
+                          onPressed: _clearSearch,
+                          icon: const Icon(Icons.clear),
+                        )
+                      : IconButton(
+                          onPressed: () {},
+                          icon: const Icon(Icons.tune),
+                        ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
                   ),
-            ),
-
-            const SizedBox(height: 16),
-
-            Row(
-              children: [
-                Expanded(
-                  child: _MarketIndexCard(
-                    name: 'NIFTY 50',
-                    value: '25,350.20',
-                    change: '+0.72%',
-                    isPositive: true,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _MarketIndexCard(
-                    name: 'SENSEX',
-                    value: '82,450.30',
-                    change: '+0.58%',
-                    isPositive: true,
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 28),
-
-            // Popular Stocks
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Popular Stocks',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                ),
-                TextButton(
-                  onPressed: () {},
-                  child: const Text('View All'),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 8),
-
-            if (filteredStocks.isEmpty)
-              _NoStocksFound()
-            else
-              ...filteredStocks.map(
-                (stock) => _StockCard(
-                  companyName: stock['companyName'],
-                  symbol: stock['symbol'],
-                  price: stock['price'],
-                  change: stock['change'],
-                  isPositive: stock['isPositive'],
                 ),
               ),
 
-            const SizedBox(height: 28),
+              const SizedBox(height: 28),
+
+              // Market Overview
+              Text(
+                'Market Overview',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+
+              const SizedBox(height: 16),
+
+              Row(
+                children: [
+                  Expanded(
+                    child: _MarketIndexCard(
+                      name: _indices.isNotEmpty ? _indices[0].name : 'NIFTY 50',
+                      value: _indices.isNotEmpty
+                          ? _indices[0].value.toStringAsFixed(2)
+                          : '25,350.20',
+                      change: _indices.isNotEmpty
+                          ? '${_indices[0].changePercent >= 0 ? '+' : ''}${_indices[0].changePercent.toStringAsFixed(2)}%'
+                          : '+0.72%',
+                      isPositive: _indices.isNotEmpty
+                          ? _indices[0].changePercent >= 0
+                          : true,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _MarketIndexCard(
+                      name: _indices.length > 1 ? _indices[1].name : 'SENSEX',
+                      value: _indices.length > 1
+                          ? _indices[1].value.toStringAsFixed(2)
+                          : '82,450.30',
+                      change: _indices.length > 1
+                          ? '${_indices[1].changePercent >= 0 ? '+' : ''}${_indices[1].changePercent.toStringAsFixed(2)}%'
+                          : '+0.58%',
+                      isPositive: _indices.length > 1
+                          ? _indices[1].changePercent >= 0
+                          : true,
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 28),
+
+              // Popular Stocks
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Popular Stocks',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
+                  TextButton(
+                    onPressed: _loadMarketData,
+                    child: const Text('Refresh'),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 8),
+
+              if (filteredStocks.isEmpty && !_isLoading)
+                const _NoStocksFound()
+              else if (_isLoading && filteredStocks.isEmpty)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(20),
+                    child: CircularProgressIndicator(),
+                  ),
+                )
+              else
+                ...filteredStocks.map(
+                  (stock) => _StockCard(
+                    companyName: stock['companyName'],
+                    symbol: stock['symbol'],
+                    price: stock['price'],
+                    change: stock['change'],
+                    isPositive: stock['isPositive'],
+                  ),
+                ),
+
+              const SizedBox(height: 28),
 
             // Market Sectors
             Text(
@@ -245,8 +323,9 @@ class _MarketScreenState extends State<MarketScreen> {
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }
 
 // No Stocks Found

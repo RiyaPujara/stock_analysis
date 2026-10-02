@@ -1,13 +1,21 @@
 import 'package:flutter/material.dart';
 
+import '../alerts/alerts_screen.dart';
+import '../auth/login_screen.dart';
 import '../notifications/notification_screen.dart';
 import '../settings/settings_screen.dart';
+import '../../services/auth_service.dart';
+import '../../utils/theme_controller.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final user = AuthService.instance.currentUser;
+    final userName = user?.name ?? 'Riya Pujara';
+    final userEmail = user?.email ?? 'riya@example.com';
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Profile'),
@@ -28,16 +36,16 @@ class ProfileScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-            const Text(
-              'Riya Pujara',
-              style: TextStyle(
+            Text(
+              userName,
+              style: const TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.bold,
               ),
             ),
             const SizedBox(height: 4),
             Text(
-              'riya@example.com',
+              userEmail,
               style: Theme.of(context).textTheme.bodyMedium,
             ),
             const SizedBox(height: 30),
@@ -48,14 +56,14 @@ class ProfileScreen extends StatelessWidget {
             _ProfileTile(
               icon: Icons.person_outline,
               title: 'Personal Information',
-              subtitle: 'Manage your profile details',
+              subtitle: userName,
               onTap: () {},
             ),
 
             _ProfileTile(
               icon: Icons.email_outlined,
               title: 'Email',
-              subtitle: 'riya@example.com',
+              subtitle: userEmail,
               onTap: () {},
             ),
 
@@ -74,12 +82,26 @@ class ProfileScreen extends StatelessWidget {
             _ProfileTile(
               icon: Icons.notifications_outlined,
               title: 'Notifications',
-              subtitle: 'Manage your alerts',
+              subtitle: 'Recent notifications and updates',
               onTap: () {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (context) => const NotificationsScreen(),
+                  ),
+                );
+              },
+            ),
+
+            _ProfileTile(
+              icon: Icons.add_alert_outlined,
+              title: 'Price Alerts',
+              subtitle: 'Manage target price triggers',
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const AlertsScreen(),
                   ),
                 );
               },
@@ -149,7 +171,7 @@ class ProfileScreen extends StatelessWidget {
   void _showLogoutDialog(BuildContext context) {
     showDialog(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
           title: const Text('Logout'),
           content: const Text(
@@ -158,13 +180,25 @@ class ProfileScreen extends StatelessWidget {
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(context);
+                Navigator.pop(dialogContext);
               },
               child: const Text('Cancel'),
             ),
             FilledButton(
               onPressed: () {
-                Navigator.pop(context);
+                AuthService.instance.logout();
+                Navigator.pop(dialogContext);
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(
+                    builder: (context) => LoginScreen(
+                      onThemeChanged: (isDark) {
+                        themeModeNotifier.value =
+                            isDark ? ThemeMode.dark : ThemeMode.light;
+                      },
+                    ),
+                  ),
+                  (route) => false,
+                );
               },
               child: const Text('Logout'),
             ),

@@ -1,240 +1,307 @@
 import 'package:flutter/material.dart';
+import '../../services/portfolio_service.dart';
+import '../../models/holding.dart';
 
-class AnalyticsScreen extends StatelessWidget {
+class AnalyticsScreen extends StatefulWidget {
   const AnalyticsScreen({super.key});
 
   @override
+  State<AnalyticsScreen> createState() => _AnalyticsScreenState();
+}
+
+class _AnalyticsScreenState extends State<AnalyticsScreen> {
+  Map<String, dynamic>? _summary;
+  List<Holding> _holdings = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    final summary = await PortfolioService.instance.getSummary();
+    final holdings = await PortfolioService.instance.getHoldings();
+    if (mounted) {
+      setState(() {
+        _summary = summary;
+        _holdings = holdings;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final totalValue = (_summary?['totalValue'] ?? 125000.0) as num;
+    final invested = (_summary?['totalInvested'] ?? 112550.0) as num;
+    final totalGainLoss = (_summary?['totalGainLoss'] ?? 12450.0) as num;
+    final totalGainLossPct =
+        (_summary?['totalGainLossPercent'] ?? 11.05) as num;
+    final isPositive = totalGainLoss >= 0;
+    final todayGainPct = (_summary?['todayGainPercent'] ?? 1.98) as num;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Advanced Analytics'),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Portfolio Performance',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-            ),
-            const SizedBox(height: 16),
+      body: RefreshIndicator(
+        onRefresh: _loadData,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Portfolio Performance',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+              const SizedBox(height: 16),
 
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Total Return',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      '+₹12,450',
-                      style: TextStyle(
-                        fontSize: 30,
-                        fontWeight: FontWeight.bold,
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Total Return',
+                        style: Theme.of(context).textTheme.bodyMedium,
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '+11.05% overall',
-                      style: TextStyle(
-                        color: Colors.green.shade700,
-                        fontWeight: FontWeight.w600,
+                      const SizedBox(height: 8),
+                      Text(
+                        '${isPositive ? '+' : ''}₹${totalGainLoss.abs().toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          fontSize: 30,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 20),
-                    SizedBox(
-                      height: 180,
-                      width: double.infinity,
-                      child: CustomPaint(
-                        painter: _PerformanceChartPainter(),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${isPositive ? '+' : ''}${totalGainLossPct.toStringAsFixed(2)}% overall',
+                        style: TextStyle(
+                          color: isPositive
+                              ? Colors.green.shade700
+                              : Colors.red.shade700,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: const [
-                        Text('1M'),
-                        Text('3M'),
-                        Text('6M'),
-                        Text('1Y'),
-                        Text('All'),
-                      ],
-                    ),
-                  ],
+                      const SizedBox(height: 20),
+                      SizedBox(
+                        height: 180,
+                        width: double.infinity,
+                        child: CustomPaint(
+                          painter: _PerformanceChartPainter(),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      const Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children: [
+                          Text('1M'),
+                          Text('3M'),
+                          Text('6M'),
+                          Text('1Y'),
+                          Text('All'),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
 
-            const SizedBox(height: 28),
+              const SizedBox(height: 28),
 
-            Text(
-              'Key Metrics',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-            ),
-            const SizedBox(height: 16),
-
-            Row(
-              children: [
-                Expanded(
-                  child: _MetricCard(
-                    title: 'Current Value',
-                    value: '₹1,25,000',
-                    icon: Icons.account_balance_wallet_outlined,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _MetricCard(
-                    title: 'Invested',
-                    value: '₹1,12,550',
-                    icon: Icons.payments_outlined,
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 12),
-
-            Row(
-              children: [
-                Expanded(
-                  child: _MetricCard(
-                    title: 'Holdings',
-                    value: '5',
-                    icon: Icons.pie_chart_outline,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _MetricCard(
-                    title: 'Today',
-                    value: '+1.98%',
-                    icon: Icons.trending_up,
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 28),
-
-            Text(
-              'Asset Allocation',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-            ),
-            const SizedBox(height: 16),
-
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  children: [
-                    _AllocationRow(
-                      company: 'Reliance Industries',
-                      percentage: '30%',
-                      value: '₹37,500',
+              Text(
+                'Key Metrics',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
                     ),
-                    _AllocationRow(
-                      company: 'TCS',
-                      percentage: '25%',
-                      value: '₹31,250',
-                    ),
-                    _AllocationRow(
-                      company: 'Infosys',
-                      percentage: '20%',
-                      value: '₹25,000',
-                    ),
-                    _AllocationRow(
-                      company: 'HDFC Bank',
-                      percentage: '15%',
-                      value: '₹18,750',
-                    ),
-                    _AllocationRow(
-                      company: 'ICICI Bank',
-                      percentage: '10%',
-                      value: '₹12,500',
-                    ),
-                  ],
-                ),
               ),
-            ),
+              const SizedBox(height: 16),
 
-            const SizedBox(height: 28),
-
-            Text(
-              'Performance Leaders',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
+              Row(
+                children: [
+                  Expanded(
+                    child: _MetricCard(
+                      title: 'Current Value',
+                      value: '₹${totalValue.toStringAsFixed(0)}',
+                      icon: Icons.account_balance_wallet_outlined,
+                    ),
                   ),
-            ),
-            const SizedBox(height: 16),
-
-            _PerformanceStockCard(
-              company: 'Reliance Industries',
-              symbol: 'RELIANCE',
-              returnValue: '+18.40%',
-              isPositive: true,
-            ),
-            _PerformanceStockCard(
-              company: 'TCS',
-              symbol: 'TCS',
-              returnValue: '+14.25%',
-              isPositive: true,
-            ),
-            _PerformanceStockCard(
-              company: 'Infosys',
-              symbol: 'INFY',
-              returnValue: '-3.20%',
-              isPositive: false,
-            ),
-
-            const SizedBox(height: 28),
-
-            Text(
-              'Risk & Diversification',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _MetricCard(
+                      title: 'Invested',
+                      value: '₹${invested.toStringAsFixed(0)}',
+                      icon: Icons.payments_outlined,
+                    ),
                   ),
-            ),
-            const SizedBox(height: 16),
+                ],
+              ),
 
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  children: [
-                    _RiskRow(
-                      title: 'Diversification',
-                      value: 'Good',
+              const SizedBox(height: 12),
+
+              Row(
+                children: [
+                  Expanded(
+                    child: _MetricCard(
+                      title: 'Holdings',
+                      value: '${_holdings.isNotEmpty ? _holdings.length : 5}',
                       icon: Icons.pie_chart_outline,
                     ),
-                    _RiskRow(
-                      title: 'Portfolio Risk',
-                      value: 'Moderate',
-                      icon: Icons.shield_outlined,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _MetricCard(
+                      title: 'Today',
+                      value:
+                          '${todayGainPct >= 0 ? '+' : ''}${todayGainPct.toStringAsFixed(2)}%',
+                      icon: Icons.trending_up,
                     ),
-                    _RiskRow(
-                      title: 'Sector Exposure',
-                      value: 'Balanced',
-                      icon: Icons.business_outlined,
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 28),
+
+              Text(
+                'Asset Allocation',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
                     ),
-                  ],
+              ),
+              const SizedBox(height: 16),
+
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    children: _holdings.isNotEmpty
+                        ? _holdings.map((h) {
+                            return _AllocationRow(
+                              company: h.stockName.isNotEmpty
+                                  ? h.stockName
+                                  : h.stockSymbol,
+                              percentage:
+                                  '${h.allocationPercent.toStringAsFixed(1)}%',
+                              value: '₹${h.totalValue.toStringAsFixed(0)}',
+                            );
+                          }).toList()
+                        : const [
+                            _AllocationRow(
+                              company: 'Reliance Industries',
+                              percentage: '30%',
+                              value: '₹37,500',
+                            ),
+                            _AllocationRow(
+                              company: 'TCS',
+                              percentage: '25%',
+                              value: '₹31,250',
+                            ),
+                            _AllocationRow(
+                              company: 'Infosys',
+                              percentage: '20%',
+                              value: '₹25,000',
+                            ),
+                            _AllocationRow(
+                              company: 'HDFC Bank',
+                              percentage: '15%',
+                              value: '₹18,750',
+                            ),
+                            _AllocationRow(
+                              company: 'ICICI Bank',
+                              percentage: '10%',
+                              value: '₹12,500',
+                            ),
+                          ],
+                  ),
                 ),
               ),
-            ),
 
-            const SizedBox(height: 30),
-          ],
+              const SizedBox(height: 28),
+
+              Text(
+                'Performance Leaders',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+              const SizedBox(height: 16),
+
+              if (_holdings.isNotEmpty)
+                ..._holdings.take(3).map((h) {
+                  final isPos = h.gainLossPercentage >= 0;
+                  return _PerformanceStockCard(
+                    company:
+                        h.stockName.isNotEmpty ? h.stockName : h.stockSymbol,
+                    symbol: h.stockSymbol,
+                    returnValue:
+                        '${isPos ? '+' : ''}${h.gainLossPercentage.toStringAsFixed(2)}%',
+                    isPositive: isPos,
+                  );
+                })
+              else ...[
+                const _PerformanceStockCard(
+                  company: 'Reliance Industries',
+                  symbol: 'RELIANCE',
+                  returnValue: '+18.40%',
+                  isPositive: true,
+                ),
+                const _PerformanceStockCard(
+                  company: 'TCS',
+                  symbol: 'TCS',
+                  returnValue: '+14.25%',
+                  isPositive: true,
+                ),
+                const _PerformanceStockCard(
+                  company: 'Infosys',
+                  symbol: 'INFY',
+                  returnValue: '-3.20%',
+                  isPositive: false,
+                ),
+              ],
+
+              const SizedBox(height: 28),
+
+              Text(
+                'Risk & Diversification',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+              const SizedBox(height: 16),
+
+              const Card(
+                child: Padding(
+                  padding: EdgeInsets.all(20),
+                  child: Column(
+                    children: [
+                      _RiskRow(
+                        title: 'Diversification',
+                        value: 'Good',
+                        icon: Icons.pie_chart_outline,
+                      ),
+                      _RiskRow(
+                        title: 'Portfolio Risk',
+                        value: 'Moderate',
+                        icon: Icons.shield_outlined,
+                      ),
+                      _RiskRow(
+                        title: 'Sector Exposure',
+                        value: 'Balanced',
+                        icon: Icons.business_outlined,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 30),
+            ],
+          ),
         ),
       ),
     );

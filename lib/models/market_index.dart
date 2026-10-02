@@ -13,6 +13,8 @@ class MarketIndex {
     required this.changePercent,
   });
 
+  double get value => currentValue;
+
   factory MarketIndex.fromJson(Map<String, dynamic> json) {
     return MarketIndex(
       name: json['name'],

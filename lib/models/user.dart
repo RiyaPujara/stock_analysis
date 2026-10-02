@@ -15,12 +15,14 @@ class User {
   //convert JSON data received from your backend/API into a Dart User object.
   factory User.fromJson(Map<String, dynamic> json) {
     return User(
-      id: json['id'],
-      name: json['name'],
-      email: json['email'],
+      id: json['id'] is int
+          ? json['id']
+          : int.tryParse(json['id']?.toString() ?? '1') ?? 1,
+      name: json['name'] ?? '',
+      email: json['email'] ?? '',
       profileImage: json['profileImage'],
       createdAt: json['createdAt'] != null
-          ? DateTime.parse(json['createdAt'])
+          ? DateTime.tryParse(json['createdAt'].toString())
           : null,
     );
   }

@@ -3,17 +3,55 @@ import 'package:flutter/material.dart';
 import '../stock/stock_details_screen.dart';
 import 'add_holding_screen.dart';
 import 'portfolio_details_screen.dart';
+import '../../services/portfolio_service.dart';
+import '../../models/holding.dart';
 
-class PortfolioScreen extends StatelessWidget {
+class PortfolioScreen extends StatefulWidget {
   const PortfolioScreen({super.key});
 
-  void _openAddHolding(BuildContext context) {
-    Navigator.push(
+  @override
+  State<PortfolioScreen> createState() => _PortfolioScreenState();
+}
+
+class _PortfolioScreenState extends State<PortfolioScreen> {
+  Map<String, dynamic>? _summary;
+  List<Holding> _holdings = [];
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    final summary = await PortfolioService.instance.getSummary();
+    final holdings = await PortfolioService.instance.getHoldings();
+
+    if (mounted) {
+      setState(() {
+        _summary = summary;
+        _holdings = holdings;
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _openAddHolding(BuildContext context) async {
+    final result = await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => const AddHoldingScreen(),
       ),
     );
+
+    if (result == true) {
+      _loadData();
+    }
   }
 
   void _openPortfolioDetails(BuildContext context) {
@@ -22,7 +60,7 @@ class PortfolioScreen extends StatelessWidget {
       MaterialPageRoute(
         builder: (context) => const PortfolioDetailsScreen(),
       ),
-    );
+    ).then((_) => _loadData());
   }
 
   void _openStockDetails(
@@ -38,11 +76,23 @@ class PortfolioScreen extends StatelessWidget {
           symbol: symbol,
         ),
       ),
-    );
+    ).then((_) => _loadData());
   }
 
   @override
   Widget build(BuildContext context) {
+    final totalValue = (_summary?['totalValue'] ?? 125000.0) as num;
+    final totalGainLoss = (_summary?['totalGainLoss'] ?? 12450.0) as num;
+    final totalGainLossPercent =
+        (_summary?['totalGainLossPercent'] ?? 11.05) as num;
+    final isOverallPositive = totalGainLoss >= 0;
+
+    final todayGain = (_summary?['todayGain'] ?? 2450.0) as num;
+    final todayGainPercent = (_summary?['todayGainPercent'] ?? 1.98) as num;
+    final isTodayPositive = todayGain >= 0;
+
+    final invested = (_summary?['totalInvested'] ?? 112550.0) as num;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('My Portfolio'),
@@ -54,262 +104,275 @@ class PortfolioScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Portfolio Summary
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Total Portfolio Value',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '₹1,25,000.00',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onPrimary,
-                      fontSize: 30,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.trending_up,
-                        color: Theme.of(context).colorScheme.onPrimary,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        '+₹12,450 (11.05%)',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onPrimary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Overall',
-                        style: TextStyle(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onPrimary
-                              .withValues(alpha: 0.8),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 18),
-                  OutlinedButton.icon(
-                    onPressed: () => _openPortfolioDetails(context),
-                    icon: Icon(
-                      Icons.analytics_outlined,
-                      color: Theme.of(context).colorScheme.onPrimary,
-                    ),
-                    label: Text(
-                      'View Portfolio Details',
+      body: RefreshIndicator(
+        onRefresh: _loadData,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Portfolio Summary
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primary,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Total Portfolio Value',
                       style: TextStyle(
                         color: Theme.of(context).colorScheme.onPrimary,
                       ),
                     ),
-                    style: OutlinedButton.styleFrom(
-                      side: BorderSide(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onPrimary
-                            .withValues(alpha: 0.6),
+                    const SizedBox(height: 8),
+                    Text(
+                      '₹${totalValue.toStringAsFixed(2)}',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onPrimary,
+                        fontSize: 30,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            // Today's Performance
-            Text(
-              "Today's Performance",
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-            ),
-
-            const SizedBox(height: 16),
-
-            Row(
-              children: [
-                Expanded(
-                  child: _PerformanceCard(
-                    title: "Today's Gain",
-                    value: '+₹2,450',
-                    percentage: '+1.98%',
-                    isPositive: true,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _PerformanceCard(
-                    title: 'Invested',
-                    value: '₹1,12,550',
-                    percentage: '',
-                    isPositive: true,
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 28),
-
-            // Asset Allocation
-            Text(
-              'Asset Allocation',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-            ),
-
-            const SizedBox(height: 16),
-
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(18),
-                child: Column(
-                  children: [
-                    const _AllocationRow(
-                      name: 'Stocks',
-                      percentage: '80%',
-                      value: '₹1,00,000',
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Icon(
+                          isOverallPositive
+                              ? Icons.trending_up
+                              : Icons.trending_down,
+                          color: Theme.of(context).colorScheme.onPrimary,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          '${isOverallPositive ? '+' : ''}₹${totalGainLoss.abs().toStringAsFixed(2)} (${isOverallPositive ? '+' : ''}${totalGainLossPercent.toStringAsFixed(2)}%)',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onPrimary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Overall',
+                          style: TextStyle(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onPrimary
+                                .withValues(alpha: 0.8),
+                          ),
+                        ),
+                      ],
                     ),
-                    const Divider(height: 24),
-                    const _AllocationRow(
-                      name: 'Cash',
-                      percentage: '15%',
-                      value: '₹18,750',
-                    ),
-                    const Divider(height: 24),
-                    const _AllocationRow(
-                      name: 'Other',
-                      percentage: '5%',
-                      value: '₹6,250',
+                    const SizedBox(height: 18),
+                    OutlinedButton.icon(
+                      onPressed: () => _openPortfolioDetails(context),
+                      icon: Icon(
+                        Icons.analytics_outlined,
+                        color: Theme.of(context).colorScheme.onPrimary,
+                      ),
+                      label: Text(
+                        'View Portfolio Details',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onPrimary,
+                        ),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onPrimary
+                              .withValues(alpha: 0.6),
+                        ),
+                      ),
                     ),
                   ],
                 ),
               ),
-            ),
 
-            const SizedBox(height: 28),
+              const SizedBox(height: 24),
 
-            // Holdings
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Your Holdings',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
+              // Today's Performance
+              Text(
+                "Today's Performance",
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+
+              const SizedBox(height: 16),
+
+              Row(
+                children: [
+                  Expanded(
+                    child: _PerformanceCard(
+                      title: "Today's Gain",
+                      value:
+                          '${isTodayPositive ? '+' : ''}₹${todayGain.abs().toStringAsFixed(2)}',
+                      percentage:
+                          '${isTodayPositive ? '+' : ''}${todayGainPercent.toStringAsFixed(2)}%',
+                      isPositive: isTodayPositive,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _PerformanceCard(
+                      title: 'Invested',
+                      value: '₹${invested.toStringAsFixed(2)}',
+                      percentage: '',
+                      isPositive: true,
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 28),
+
+              // Asset Allocation
+              Text(
+                'Asset Allocation',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+
+              const SizedBox(height: 16),
+
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: Column(
+                    children: [
+                      _AllocationRow(
+                        name: 'Stocks',
+                        percentage: totalValue > 0 ? '90%' : '0%',
+                        value: '₹${totalValue.toStringAsFixed(2)}',
                       ),
-                ),
-                TextButton(
-                  onPressed: () => _openPortfolioDetails(context),
-                  child: const Text('View All'),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 8),
-
-            _HoldingCard(
-              companyName: 'Reliance Industries',
-              symbol: 'RELIANCE',
-              quantity: '10 shares',
-              value: '₹29,455',
-              gain: '+₹1,250',
-              isPositive: true,
-              onTap: () => _openStockDetails(
-                context,
-                companyName: 'Reliance Industries',
-                symbol: 'RELIANCE',
-              ),
-            ),
-
-            _HoldingCard(
-              companyName: 'Tata Consultancy Services',
-              symbol: 'TCS',
-              quantity: '5 shares',
-              value: '₹20,629',
-              gain: '+₹820',
-              isPositive: true,
-              onTap: () => _openStockDetails(
-                context,
-                companyName: 'Tata Consultancy Services',
-                symbol: 'TCS',
-              ),
-            ),
-
-            _HoldingCard(
-              companyName: 'Infosys',
-              symbol: 'INFY',
-              quantity: '10 shares',
-              value: '₹14,852',
-              gain: '-₹350',
-              isPositive: false,
-              onTap: () => _openStockDetails(
-                context,
-                companyName: 'Infosys',
-                symbol: 'INFY',
-              ),
-            ),
-
-            _HoldingCard(
-              companyName: 'HDFC Bank',
-              symbol: 'HDFCBANK',
-              quantity: '8 shares',
-              value: '₹15,003',
-              gain: '+₹540',
-              isPositive: true,
-              onTap: () => _openStockDetails(
-                context,
-                companyName: 'HDFC Bank',
-                symbol: 'HDFCBANK',
-              ),
-            ),
-
-            const SizedBox(height: 30),
-
-            // Add Holding Button
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: FilledButton.icon(
-                onPressed: () => _openAddHolding(context),
-                icon: const Icon(Icons.add),
-                label: const Text(
-                  'Add New Holding',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
+                      const Divider(height: 24),
+                      const _AllocationRow(
+                        name: 'Cash',
+                        percentage: '10%',
+                        value: '₹10,000.00',
+                      ),
+                    ],
                   ),
                 ),
               ),
-            ),
 
-            const SizedBox(height: 20),
-          ],
+              const SizedBox(height: 28),
+
+              // Holdings
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Your Holdings',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
+                  TextButton(
+                    onPressed: () => _openPortfolioDetails(context),
+                    child: const Text('View All'),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 8),
+
+              if (_holdings.isNotEmpty)
+                ..._holdings.map((h) {
+                  final isPos = h.gainLoss >= 0;
+                  return _HoldingCard(
+                    companyName: h.stockName.isNotEmpty ? h.stockName : h.stockSymbol,
+                    symbol: h.stockSymbol,
+                    quantity: '${h.quantity} shares',
+                    value: '₹${h.totalValue.toStringAsFixed(2)}',
+                    gain: '${isPos ? '+' : ''}₹${h.gainLoss.abs().toStringAsFixed(2)}',
+                    isPositive: isPos,
+                    onTap: () => _openStockDetails(
+                      context,
+                      companyName:
+                          h.stockName.isNotEmpty ? h.stockName : h.stockSymbol,
+                      symbol: h.stockSymbol,
+                    ),
+                  );
+                })
+              else if (_isLoading)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(20),
+                    child: CircularProgressIndicator(),
+                  ),
+                )
+              else ...[
+                _HoldingCard(
+                  companyName: 'Reliance Industries',
+                  symbol: 'RELIANCE',
+                  quantity: '10 shares',
+                  value: '₹29,455',
+                  gain: '+₹1,250',
+                  isPositive: true,
+                  onTap: () => _openStockDetails(
+                    context,
+                    companyName: 'Reliance Industries',
+                    symbol: 'RELIANCE',
+                  ),
+                ),
+                _HoldingCard(
+                  companyName: 'Tata Consultancy Services',
+                  symbol: 'TCS',
+                  quantity: '5 shares',
+                  value: '₹20,629',
+                  gain: '+₹820',
+                  isPositive: true,
+                  onTap: () => _openStockDetails(
+                    context,
+                    companyName: 'Tata Consultancy Services',
+                    symbol: 'TCS',
+                  ),
+                ),
+                _HoldingCard(
+                  companyName: 'Infosys',
+                  symbol: 'INFY',
+                  quantity: '10 shares',
+                  value: '₹14,852',
+                  gain: '-₹350',
+                  isPositive: false,
+                  onTap: () => _openStockDetails(
+                    context,
+                    companyName: 'Infosys',
+                    symbol: 'INFY',
+                  ),
+                ),
+              ],
+
+              const SizedBox(height: 30),
+
+              // Add Holding Button
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: FilledButton.icon(
+                  onPressed: () => _openAddHolding(context),
+                  icon: const Icon(Icons.add),
+                  label: const Text(
+                    'Add New Holding',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 20),
+            ],
+          ),
         ),
       ),
     );

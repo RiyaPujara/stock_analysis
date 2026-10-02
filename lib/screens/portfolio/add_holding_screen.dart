@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../services/portfolio_service.dart';
 
 class AddHoldingScreen extends StatefulWidget {
   const AddHoldingScreen({super.key});
@@ -19,27 +20,75 @@ class _AddHoldingScreenState extends State<AddHoldingScreen> {
 
   String _selectedTransaction = 'Buy';
   String _selectedExchange = 'NSE';
+  bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _quantityController.addListener(_onFieldChanged);
+    _priceController.addListener(_onFieldChanged);
+  }
+
+  void _onFieldChanged() {
+    setState(() {});
+  }
 
   @override
   void dispose() {
+    _quantityController.removeListener(_onFieldChanged);
+    _priceController.removeListener(_onFieldChanged);
     _stockController.dispose();
     _quantityController.dispose();
     _priceController.dispose();
     super.dispose();
   }
 
-  void _saveHolding() {
+  Future<void> _saveHolding() async {
     if (!_formKey.currentState!.validate()) {
       return;
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Holding added successfully'),
-      ),
-    );
+    final symbol = _stockController.text.trim().toUpperCase();
+    final quantity = int.tryParse(_quantityController.text.trim()) ?? 0;
+    final price = double.tryParse(_priceController.text.trim()) ?? 0.0;
 
-    Navigator.pop(context);
+    setState(() {
+      _isSaving = true;
+    });
+
+    try {
+      await PortfolioService.instance.addHolding(
+        symbol: symbol,
+        quantity: quantity.toDouble(),
+        purchasePrice: price,
+        transactionType: _selectedTransaction.toLowerCase(),
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Holding $symbol ${_selectedTransaction.toLowerCase()}ed successfully',
+          ),
+        ),
+      );
+
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: ${e.toString()}'),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
+    }
   }
 
   @override
@@ -290,15 +339,21 @@ class _AddHoldingScreenState extends State<AddHoldingScreen> {
                                   .textTheme
                                   .bodyMedium,
                             ),
-                            const SizedBox(height: 5),
-                            Text(
-                              'Enter quantity and price',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleMedium
-                                  ?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                            Builder(
+                              builder: (context) {
+                                final q = double.tryParse(_quantityController.text.trim()) ?? 0.0;
+                                final p = double.tryParse(_priceController.text.trim()) ?? 0.0;
+                                final est = q * p;
+                                return Text(
+                                  est > 0 ? '₹${est.toStringAsFixed(2)}' : 'Enter quantity and price',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleMedium
+                                      ?.copyWith(
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                );
+                              },
                             ),
                           ],
                         ),
@@ -315,11 +370,20 @@ class _AddHoldingScreenState extends State<AddHoldingScreen> {
                 width: double.infinity,
                 height: 52,
                 child: FilledButton.icon(
-                  onPressed: _saveHolding,
-                  icon: const Icon(Icons.save_outlined),
-                  label: const Text(
-                    'Add to Portfolio',
-                    style: TextStyle(
+                  onPressed: _isSaving ? null : _saveHolding,
+                  icon: _isSaving
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.save_outlined),
+                  label: Text(
+                    _isSaving ? 'Saving...' : 'Add to Portfolio',
+                    style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
                     ),

@@ -29,17 +29,27 @@ class Transaction {
 
   factory Transaction.fromJson(Map<String, dynamic> json) {
     return Transaction(
-      id: json['id'],
-      portfolioId: json['portfolioId'],
-      stockId: json['stockId'],
-      symbol: json['symbol'],
-      type: json['type'] == 'BUY' ? TransactionType.buy : TransactionType.sell,
-      quantity: (json['quantity'] as num).toDouble(),
-      price: (json['price'] as num).toDouble(),
-      brokerage: (json['brokerage'] as num).toDouble(),
-      taxes: (json['taxes'] as num).toDouble(),
-      totalAmount: (json['totalAmount'] as num).toDouble(),
-      transactionDate: DateTime.parse(json['transactionDate']),
+      id: json['id'] is int
+          ? json['id']
+          : int.tryParse(json['id']?.toString() ?? '1') ?? 1,
+      portfolioId: json['portfolioId'] is int
+          ? json['portfolioId']
+          : int.tryParse(json['portfolioId']?.toString() ?? '1') ?? 1,
+      stockId: json['stockId'] is int
+          ? json['stockId']
+          : int.tryParse(json['stockId']?.toString() ?? '1') ?? 1,
+      symbol: json['symbol'] ?? '',
+      type: (json['type']?.toString().toUpperCase() == 'SELL')
+          ? TransactionType.sell
+          : TransactionType.buy,
+      quantity: (json['quantity'] as num?)?.toDouble() ?? 0.0,
+      price: (json['price'] as num?)?.toDouble() ?? 0.0,
+      brokerage: (json['brokerage'] as num?)?.toDouble() ?? 0.0,
+      taxes: (json['taxes'] as num?)?.toDouble() ?? 0.0,
+      totalAmount: (json['totalAmount'] as num?)?.toDouble() ?? 0.0,
+      transactionDate: json['transactionDate'] != null
+          ? DateTime.tryParse(json['transactionDate'].toString()) ?? DateTime.now()
+          : DateTime.now(),
     );
   }
 
