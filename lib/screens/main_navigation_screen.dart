@@ -64,7 +64,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
     return Scaffold(
       appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(100),
+        preferredSize: const Size.fromHeight(102),
         child: Container(
           decoration: BoxDecoration(
             color: isDark ? const Color(0xFF090D15) : Colors.white,
@@ -184,54 +184,56 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
                       const SizedBox(width: 24),
 
-                      // 2. PROMINENT TOP NAVBAR TABS
-                      Expanded(
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Row(
-                            children: [
-                              _TopNavTab(
-                                icon: Icons.grid_view_rounded,
-                                label: 'Home',
-                                isSelected: _selectedIndex == 0,
-                                onTap: () => setState(() => _selectedIndex = 0),
-                              ),
-                              const SizedBox(width: 6),
-                              _TopNavTab(
-                                icon: Icons.candlestick_chart_rounded,
-                                label: 'Markets',
-                                isSelected: _selectedIndex == 1,
-                                badge: 'LIVE',
-                                badgeColor: AppTheme.primaryEmerald,
-                                onTap: () => setState(() => _selectedIndex = 1),
-                              ),
-                              const SizedBox(width: 6),
-                              _TopNavTab(
-                                icon: Icons.auto_awesome_rounded,
-                                label: 'AI What-If',
-                                isSelected: _selectedIndex == 2,
-                                badge: 'GEMINI',
-                                isAiTab: true,
-                                onTap: () => setState(() => _selectedIndex = 2),
-                              ),
-                              const SizedBox(width: 6),
-                              _TopNavTab(
-                                icon: Icons.account_balance_wallet_rounded,
-                                label: 'Portfolio',
-                                isSelected: _selectedIndex == 3,
-                                onTap: () => setState(() => _selectedIndex = 3),
-                              ),
-                              const SizedBox(width: 6),
-                              _TopNavTab(
-                                icon: Icons.person_rounded,
-                                label: 'Profile',
-                                isSelected: _selectedIndex == 4,
-                                onTap: () => setState(() => _selectedIndex = 4),
-                              ),
-                            ],
+                      if (!isMobile)
+                        Expanded(
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: [
+                                _TopNavTab(
+                                  icon: Icons.grid_view_rounded,
+                                  label: 'Home',
+                                  isSelected: _selectedIndex == 0,
+                                  onTap: () => setState(() => _selectedIndex = 0),
+                                ),
+                                const SizedBox(width: 6),
+                                _TopNavTab(
+                                  icon: Icons.candlestick_chart_rounded,
+                                  label: 'Markets',
+                                  isSelected: _selectedIndex == 1,
+                                  badge: 'LIVE',
+                                  badgeColor: AppTheme.primaryEmerald,
+                                  onTap: () => setState(() => _selectedIndex = 1),
+                                ),
+                                const SizedBox(width: 6),
+                                _TopNavTab(
+                                  icon: Icons.auto_awesome_rounded,
+                                  label: 'AI What-If',
+                                  isSelected: _selectedIndex == 2,
+                                  badge: 'GEMINI',
+                                  isAiTab: true,
+                                  onTap: () => setState(() => _selectedIndex = 2),
+                                ),
+                                const SizedBox(width: 6),
+                                _TopNavTab(
+                                  icon: Icons.account_balance_wallet_rounded,
+                                  label: 'Portfolio',
+                                  isSelected: _selectedIndex == 3,
+                                  onTap: () => setState(() => _selectedIndex = 3),
+                                ),
+                                const SizedBox(width: 6),
+                                _TopNavTab(
+                                  icon: Icons.person_rounded,
+                                  label: 'Profile',
+                                  isSelected: _selectedIndex == 4,
+                                  onTap: () => setState(() => _selectedIndex = 4),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                      ),
+                        )
+                      else
+                        const Spacer(),
 
                       const SizedBox(width: 12),
 
@@ -397,14 +399,15 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                           ),
                         ),
                       ),
-                      Text(
-                        '0xramm Indian-Stock-Market-API',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          color: isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8),
+                      if (screenWidth > 768)
+                        Text(
+                          '0xramm Indian-Stock-Market-API',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8),
+                          ),
                         ),
-                      ),
                     ],
                   ),
                 ),

@@ -9,6 +9,14 @@ import 'package:stock_analysis/models/watchlist.dart';
 import 'package:stock_analysis/screens/alerts/alerts_screen.dart';
 import 'package:stock_analysis/screens/notifications/notification_screen.dart';
 import 'package:stock_analysis/screens/watchlist/watchlist_screen.dart';
+import 'package:stock_analysis/screens/auth/register_screen.dart';
+import 'package:stock_analysis/screens/main_navigation_screen.dart';
+import 'package:stock_analysis/screens/dashboard/dashboard_screens.dart';
+import 'package:stock_analysis/screens/market/market_screens.dart';
+import 'package:stock_analysis/screens/portfolio/portfolio_screens.dart';
+import 'package:stock_analysis/screens/simulator/what_if_simulator_screen.dart';
+import 'package:stock_analysis/screens/profile/profile_screens.dart';
+import 'package:stock_analysis/screens/stock/stock_details_screen.dart';
 
 void main() {
   group('Stock Analyzer App Smoke & Unit Tests', () {
@@ -130,6 +138,101 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Price Alerts'), findsOneWidget);
+    });
+
+    testWidgets('RegisterScreen renders correctly with form fields', (WidgetTester tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: RegisterScreen(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Create Account'), findsWidgets);
+      expect(find.byType(TextFormField), findsWidgets);
+    });
+
+    testWidgets('MainNavigationScreen renders and displays brand navbar', (WidgetTester tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: MainNavigationScreen(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Stock Pulse'), findsOneWidget);
+      expect(find.text('MARKET PULSE'), findsOneWidget);
+    });
+
+    testWidgets('DashboardScreen renders without error', (WidgetTester tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: DashboardScreen(showAppBar: true),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Stock Pulse'), findsOneWidget);
+    });
+
+    testWidgets('MarketScreen renders search and categories', (WidgetTester tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: MarketScreen(showAppBar: true),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TextField), findsWidgets);
+    });
+
+    testWidgets('PortfolioScreen renders summary', (WidgetTester tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: PortfolioScreen(showAppBar: true),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('My Portfolio'), findsOneWidget);
+      expect(find.text('Total Portfolio Value'), findsOneWidget);
+    });
+
+    testWidgets('WhatIfSimulatorScreen renders correctly', (WidgetTester tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: WhatIfSimulatorScreen(showAppBar: true),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('AI What-If Scenario Lab'), findsOneWidget);
+    });
+
+    testWidgets('ProfileScreen renders user profile information', (WidgetTester tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: ProfileScreen(showAppBar: true),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Profile'), findsOneWidget);
+      expect(find.text('Account'), findsOneWidget);
+    });
+
+    testWidgets('StockDetailsScreen renders details layout', (WidgetTester tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: StockDetailsScreen(
+            symbol: 'TCS',
+            companyName: 'Tata Consultancy Services',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('TCS'), findsWidgets);
     });
   });
 }
