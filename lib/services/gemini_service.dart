@@ -119,6 +119,7 @@ class GeminiService {
           currentPrice: currentPrice,
           scenario: scenario,
           targetPrice: targetPrice,
+          timeHorizon: timeHorizon,
         );
         if (directResult != null) return directResult;
       } catch (e) {
@@ -133,6 +134,7 @@ class GeminiService {
       currentPrice: currentPrice,
       scenario: scenario,
       targetPrice: targetPrice,
+      timeHorizon: timeHorizon,
     );
   }
 
@@ -143,7 +145,9 @@ class GeminiService {
     required double currentPrice,
     required String scenario,
     double? targetPrice,
+    String? timeHorizon,
   }) async {
+    final horizon = timeHorizon ?? '3-6 months';
     final url = Uri.parse(
       'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$apiKey',
     );
@@ -153,22 +157,26 @@ You are an expert equity research analyst for Indian stocks (NSE/BSE).
 Analyze this What-If scenario.
 Stock: $symbol ($companyName)
 Current Price: ₹$currentPrice
+Time Horizon: $horizon
 Scenario: "$scenario"
+
+Instructions:
+Evaluate the impact realistically calibrated for the specified horizon ("$horizon"). Respect realistic daily (1-Day) or weekly (1-Week) volatility and circuit limits.
 
 Respond strictly with valid JSON only:
 {
   "sentiment": "BULLISH" or "BEARISH" or "NEUTRAL",
   "probability": "Moderate (65%)",
   "confidenceScore": 80,
-  "projectedPrice": { "min": ${currentPrice * 0.9}, "base": ${targetPrice ?? currentPrice * 1.1}, "max": ${currentPrice * 1.2} },
-  "projectedChangePercent": 10.0,
-  "executiveSummary": "Summary of effect on stock",
+  "projectedPrice": { "min": ${currentPrice * 0.98}, "base": ${targetPrice ?? currentPrice * 1.03}, "max": ${currentPrice * 1.05} },
+  "projectedChangePercent": 3.0,
+  "executiveSummary": "Summary of effect on stock over this horizon",
   "macroImpact": "Macro & sector impact",
   "bullishCatalysts": ["Catalyst 1", "Catalyst 2"],
   "bearishRisks": ["Risk 1", "Risk 2"],
   "actionPlan": "Investment advice",
-  "suggestedStopLoss": ${currentPrice * 0.93},
-  "suggestedTarget": ${targetPrice ?? currentPrice * 1.12}
+  "suggestedStopLoss": ${currentPrice * 0.97},
+  "suggestedTarget": ${targetPrice ?? currentPrice * 1.04}
 }
 ''';
 
@@ -207,7 +215,14 @@ Respond strictly with valid JSON only:
     required double currentPrice,
     required String scenario,
     double? targetPrice,
+    String? timeHorizon,
   }) {
+    final horizon = timeHorizon ?? '3-6 months';
+    final horizonLower = horizon.toLowerCase();
+    final isDay = horizonLower.contains('day') || horizonLower.contains('1d') || horizonLower.contains('intraday');
+    final isWeek = horizonLower.contains('week') || horizonLower.contains('1w') || horizonLower.contains('short');
+    final isMonth = horizonLower.contains('month') || horizonLower.contains('1m');
+
     final lower = scenario.toLowerCase();
     final isBull = lower.contains('cut') || lower.contains('beat') || lower.contains('growth') || 
                    lower.contains('boost') || lower.contains('order') || lower.contains('surge') || 
@@ -216,16 +231,48 @@ Respond strictly with valid JSON only:
                    lower.contains('war') || lower.contains('loss') || lower.contains('fall') || 
                    lower.contains('ban');
 
+    double bullMult = 1.12;
+    double bearMult = 0.91;
+    double neutralMult = 1.02;
+    double stopLossFactor = 0.93;
+    double minRatio = 0.94;
+    double maxRatio = 1.08;
+
+    if (isDay) {
+      // 1-Day Intraday simulation: realistic intraday equity moves (~1.5% to 2.5%)
+      bullMult = 1.022;
+      bearMult = 0.982;
+      neutralMult = 1.004;
+      stopLossFactor = 0.988; // -1.2% tight intraday stop loss
+      minRatio = 0.980;
+      maxRatio = 1.032;
+    } else if (isWeek) {
+      // 1-Week Swing simulation: realistic 5-7 day swing (~3.5% to 4.8%)
+      bullMult = 1.045;
+      bearMult = 0.958;
+      neutralMult = 1.008;
+      stopLossFactor = 0.965; // -3.5% swing stop loss
+      minRatio = 0.950;
+      maxRatio = 1.065;
+    } else if (isMonth) {
+      bullMult = 1.075;
+      bearMult = 0.935;
+      neutralMult = 1.015;
+      stopLossFactor = 0.950;
+      minRatio = 0.920;
+      maxRatio = 1.100;
+    }
+
     String sentiment = 'NEUTRAL';
-    double multiplier = 1.05;
-    String prob = 'Moderate (60%)';
+    double multiplier = neutralMult;
+    String prob = isDay ? 'High Probability Intraday (65%)' : isWeek ? 'Moderate 1-Week Swing (65%)' : 'Moderate (60%)';
     List<String> catalysts = ['Sector tailwinds', 'Steady domestic institutional support'];
     List<String> risks = ['Macro volatility', 'Currency fluctuations'];
 
     if (isBull && !isBear) {
       sentiment = 'BULLISH';
-      multiplier = 1.12;
-      prob = 'High (75-80%)';
+      multiplier = bullMult;
+      prob = isDay ? 'High Intraday Upside (75-80%)' : isWeek ? 'Strong 1-Week Follow-Through (72-80%)' : 'High (75-80%)';
       catalysts = [
         'Expansion in operational margins from favorable scenario dynamics',
         'Strong institutional accumulation driven by upward EPS revisions',
@@ -234,18 +281,21 @@ Respond strictly with valid JSON only:
       risks = ['Short term profit taking near resistance zones', 'Execution timeline delays'];
     } else if (isBear) {
       sentiment = 'BEARISH';
-      multiplier = 0.90;
-      prob = 'Elevated Risk (70%)';
+      multiplier = bearMult;
+      prob = isDay ? 'Elevated Intraday Downside Risk (68-75%)' : isWeek ? 'Weekly Consolidation Risk (65-72%)' : 'Elevated Risk (70%)';
       catalysts = ['Strong long-term balance sheet cushion', 'Historic valuation support zone'];
       risks = [
-        'Higher cost of capital or input inflation compressing quarterly margin',
+        'Higher cost of capital or input inflation compressing margins',
         'Temporary foreign institutional selling pressure',
         'Delayed capex or consumer demand moderation',
       ];
+    } else if (lower.contains('volatility') || lower.contains('election') || lower.contains('budget')) {
+      multiplier = isDay ? 1.008 : isWeek ? 1.015 : 1.02;
     }
 
     final baseTarget = targetPrice ?? (currentPrice * multiplier);
     final pctChange = ((baseTarget - currentPrice) / currentPrice) * 100;
+    final timeframeLabel = isDay ? '1-Day session' : isWeek ? '1-Week horizon' : isMonth ? '1-Month swing horizon' : '3-6 month horizon';
 
     return GeminiWhatIfResult(
       symbol: symbol,
@@ -254,24 +304,24 @@ Respond strictly with valid JSON only:
       sentiment: sentiment,
       probability: prob,
       confidenceScore: sentiment == 'NEUTRAL' ? 70 : 85,
-      minProjectedPrice: currentPrice * (multiplier < 1 ? 0.85 : 0.94),
+      minProjectedPrice: currentPrice * (multiplier < 1 ? minRatio * 0.98 : minRatio),
       baseProjectedPrice: baseTarget,
-      maxProjectedPrice: currentPrice * (multiplier > 1 ? multiplier * 1.08 : 1.04),
+      maxProjectedPrice: currentPrice * (multiplier > 1 ? maxRatio : 1.01),
       projectedChangePercent: pctChange,
       executiveSummary: sentiment == 'BULLISH'
-          ? 'Under this scenario, $companyName experiences positive structural momentum, leading to expanded operating margins and institutional demand.'
+          ? 'Over the $timeframeLabel under this scenario, $companyName experiences positive structural momentum, leading to expanded operating margins and institutional demand.'
           : sentiment == 'BEARISH'
-          ? 'The scenario generates headwinds for $companyName, requiring margin defense and potentially triggering short-term consolidation.'
-          : 'The scenario presents balanced cross-currents for $companyName. Price is anticipated to consolidate pending earnings clarity.',
-      macroImpact: 'Direct transmission observed through interest rate sensitivity, crude oil benchmarks, and Indian domestic demand.',
+          ? 'Over the $timeframeLabel, the scenario generates headwinds for $companyName, requiring margin defense and potentially triggering short-term consolidation.'
+          : 'Over the $timeframeLabel, the scenario presents balanced cross-currents for $companyName. Price is anticipated to consolidate pending earnings clarity.',
+      macroImpact: 'Direct transmission observed through interest rate sensitivity, crude oil benchmarks, and Indian domestic demand over the $horizon window.',
       bullishCatalysts: catalysts,
       bearishRisks: risks,
       actionPlan: sentiment == 'BULLISH'
-          ? 'Accumulate on dips near ₹${(currentPrice * 0.97).toStringAsFixed(2)}. Place stop-loss at ₹${(currentPrice * 0.93).toStringAsFixed(2)} targeting ₹${baseTarget.toStringAsFixed(2)}.'
+          ? 'Accumulate on dips near ₹${(currentPrice * (isDay ? 0.995 : isWeek ? 0.985 : 0.97)).toStringAsFixed(2)}. Place stop-loss at ₹${(currentPrice * stopLossFactor).toStringAsFixed(2)} targeting ₹${baseTarget.toStringAsFixed(2)}.'
           : sentiment == 'BEARISH'
-          ? 'Exercise tactical caution. Protect downside with stop-loss at ₹${(currentPrice * 0.94).toStringAsFixed(2)} or hedge existing exposure.'
+          ? 'Exercise tactical caution. Protect downside with stop-loss at ₹${(currentPrice * (isDay ? 0.992 : 0.94)).toStringAsFixed(2)} or hedge existing exposure.'
           : 'Hold existing positions. Wait for definitive breakout with volume confirmation.',
-      suggestedStopLoss: currentPrice * 0.93,
+      suggestedStopLoss: currentPrice * stopLossFactor,
       suggestedTarget: baseTarget,
       modelUsed: userApiKey != null ? 'gemini-1.5-flash' : 'gemini-scenario-engine',
       isSimulatedFallback: userApiKey == null,

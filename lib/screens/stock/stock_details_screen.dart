@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'dart:ui' as ui;
+import '../../models/historical_price.dart';
 import '../../services/market_service.dart';
 import '../../services/watchlist_service.dart';
 import '../alerts/alerts_screen.dart';
@@ -25,10 +27,15 @@ class _StockDetailsScreenState extends State<StockDetailsScreen> {
   bool _isWatchlisted = false;
   bool _isAddingToWatchlist = false;
 
+  String _selectedPeriod = '1D';
+  List<HistoricalPrice> _historicalPrices = [];
+  bool _isLoadingChart = false;
+
   @override
   void initState() {
     super.initState();
     _loadData();
+    _fetchHistoricalData('1D');
   }
 
   Future<void> _loadData() async {
@@ -46,6 +53,27 @@ class _StockDetailsScreenState extends State<StockDetailsScreen> {
         _fundamentals = fundamentals.toJson();
         _isLoading = false;
       });
+    }
+  }
+
+  Future<void> _fetchHistoricalData(String period) async {
+    setState(() {
+      _selectedPeriod = period;
+      _isLoadingChart = true;
+    });
+
+    try {
+      final prices = await MarketService.instance.getHistoricalPrices(widget.symbol, period: period);
+      if (mounted) {
+        setState(() {
+          _historicalPrices = prices;
+          _isLoadingChart = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _isLoadingChart = false);
+      }
     }
   }
 
@@ -243,12 +271,52 @@ class _StockDetailsScreenState extends State<StockDetailsScreen> {
 
             const SizedBox(height: 28),
 
-            // Chart
-            Text(
-              'Price Chart',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
+            // Chart Header with Period Details
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Price Chart ($_selectedPeriod)',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                    ),
+                    if (_historicalPrices.length >= 2) ...[
+                      const SizedBox(height: 2),
+                      Builder(builder: (ctx) {
+                        final first = _historicalPrices.first.close;
+                        final last = _historicalPrices.last.close;
+                        final diff = last - first;
+                        final pct = (diff / (first > 0 ? first : 1)) * 100;
+                        final isPos = diff >= 0;
+                        return Text(
+                          '${isPos ? '+' : ''}₹${diff.toStringAsFixed(2)} (${isPos ? '+' : ''}${pct.toStringAsFixed(2)}%) ${_selectedPeriod == '1D' ? 'Today' : _selectedPeriod == '1W' ? 'Past Week' : 'Past Period'}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: isPos ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                          ),
+                        );
+                      }),
+                    ],
+                  ],
+                ),
+                if (_historicalPrices.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      '${_historicalPrices.length} points',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
+                    ),
                   ),
+              ],
             ),
 
             const SizedBox(height: 16),
@@ -263,9 +331,21 @@ class _StockDetailsScreenState extends State<StockDetailsScreen> {
                     .surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: CustomPaint(
-                painter: _StockChartPainter(),
-              ),
+              child: _isLoadingChart
+                  ? const Center(child: CircularProgressIndicator())
+                  : CustomPaint(
+                      painter: _StockChartPainter(
+                        prices: _historicalPrices,
+                        isPositive: _historicalPrices.length >= 2
+                            ? (_historicalPrices.last.close >= _historicalPrices.first.close)
+                            : isPositive,
+                        chartColor: _historicalPrices.length >= 2
+                            ? (_historicalPrices.last.close >= _historicalPrices.first.close
+                                ? const Color(0xFF10B981)
+                                : const Color(0xFFEF4444))
+                            : (isPositive ? const Color(0xFF10B981) : const Color(0xFFEF4444)),
+                      ),
+                    ),
             ),
 
             const SizedBox(height: 16),
@@ -273,13 +353,13 @@ class _StockDetailsScreenState extends State<StockDetailsScreen> {
             // Time Periods
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _TimeButton(label: '1D', selected: true),
-                _TimeButton(label: '1W'),
-                _TimeButton(label: '1M'),
-                _TimeButton(label: '6M'),
-                _TimeButton(label: '1Y'),
-              ],
+              children: ['1D', '1W', '1M', '6M', '1Y'].map((p) {
+                return _TimeButton(
+                  label: p,
+                  selected: _selectedPeriod == p,
+                  onTap: () => _fetchHistoricalData(p),
+                );
+              }).toList(),
             ),
 
             const SizedBox(height: 30),
@@ -463,32 +543,38 @@ class _StockDetailsScreenState extends State<StockDetailsScreen> {
 class _TimeButton extends StatelessWidget {
   final String label;
   final bool selected;
+  final VoidCallback? onTap;
 
   const _TimeButton({
     required this.label,
     this.selected = false,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 14,
-        vertical: 8,
-      ),
-      decoration: BoxDecoration(
-        color: selected
-            ? Theme.of(context).colorScheme.primary
-            : Colors.transparent,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontWeight: FontWeight.w600,
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 8,
+        ),
+        decoration: BoxDecoration(
           color: selected
-              ? Theme.of(context).colorScheme.onPrimary
-              : Theme.of(context).colorScheme.onSurface,
+              ? Theme.of(context).colorScheme.primary
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            color: selected
+                ? Theme.of(context).colorScheme.onPrimary
+                : Theme.of(context).colorScheme.onSurface,
+          ),
         ),
       ),
     );
@@ -562,35 +648,106 @@ class _FundamentalCard extends StatelessWidget {
   }
 }
 
-// Temporary stock chart
+// Dynamic stock chart painter for 1D, 1W, and multi-period series
 class _StockChartPainter extends CustomPainter {
+  final List<HistoricalPrice> prices;
+  final bool isPositive;
+  final Color chartColor;
+
+  _StockChartPainter({
+    required this.prices,
+    required this.isPositive,
+    required this.chartColor,
+  });
+
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.green
-      ..strokeWidth = 3
-      ..style = PaintingStyle.stroke;
+    if (prices.isEmpty) {
+      final paint = Paint()
+        ..color = Colors.grey.withValues(alpha: 0.3)
+        ..strokeWidth = 1.5
+        ..style = PaintingStyle.stroke;
+      canvas.drawLine(
+        Offset(0, size.height / 2),
+        Offset(size.width, size.height / 2),
+        paint,
+      );
+      return;
+    }
+
+    double minPrice = prices.first.close;
+    double maxPrice = prices.first.close;
+    for (final p in prices) {
+      if (p.close < minPrice) minPrice = p.close;
+      if (p.close > maxPrice) maxPrice = p.close;
+    }
+
+    if (minPrice == maxPrice) {
+      minPrice *= 0.99;
+      maxPrice *= 1.01;
+    }
+
+    final priceRange = maxPrice - minPrice;
+    final padding = size.height * 0.12;
+    final usableHeight = size.height - (padding * 2);
+
+    final linePaint = Paint()
+      ..color = chartColor
+      ..strokeWidth = 2.5
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
 
     final path = Path();
+    final fillPath = Path();
 
-    path.moveTo(0, size.height * 0.75);
+    final stepX = size.width / (prices.length - 1 > 0 ? (prices.length - 1) : 1);
 
-    path.lineTo(size.width * 0.10, size.height * 0.65);
-    path.lineTo(size.width * 0.20, size.height * 0.70);
-    path.lineTo(size.width * 0.30, size.height * 0.45);
-    path.lineTo(size.width * 0.40, size.height * 0.55);
-    path.lineTo(size.width * 0.50, size.height * 0.30);
-    path.lineTo(size.width * 0.60, size.height * 0.40);
-    path.lineTo(size.width * 0.70, size.height * 0.20);
-    path.lineTo(size.width * 0.80, size.height * 0.35);
-    path.lineTo(size.width * 0.90, size.height * 0.15);
-    path.lineTo(size.width, size.height * 0.25);
+    for (int i = 0; i < prices.length; i++) {
+      final x = i * stepX;
+      final normalizedY = (prices[i].close - minPrice) / priceRange;
+      final y = size.height - padding - (normalizedY * usableHeight);
 
-    canvas.drawPath(path, paint);
+      if (i == 0) {
+        path.moveTo(x, y);
+        fillPath.moveTo(x, size.height);
+        fillPath.lineTo(x, y);
+      } else {
+        path.lineTo(x, y);
+        fillPath.lineTo(x, y);
+      }
+    }
+
+    fillPath.lineTo(size.width, size.height);
+    fillPath.close();
+
+    // Fill vertical gradient under the line chart
+    final fillPaint = Paint()
+      ..shader = ui.Gradient.linear(
+        const Offset(0, 0),
+        Offset(0, size.height),
+        [
+          chartColor.withValues(alpha: 0.28),
+          chartColor.withValues(alpha: 0.0),
+        ],
+      )
+      ..style = PaintingStyle.fill;
+
+    canvas.drawPath(fillPath, fillPaint);
+    canvas.drawPath(path, linePaint);
+
+    // Draw pulsating indicator on latest point
+    final lastNormalizedY = (prices.last.close - minPrice) / priceRange;
+    final lastY = size.height - padding - (lastNormalizedY * usableHeight);
+    final dotPaint = Paint()..color = chartColor;
+    final glowPaint = Paint()..color = chartColor.withValues(alpha: 0.35);
+
+    canvas.drawCircle(Offset(size.width, lastY), 7, glowPaint);
+    canvas.drawCircle(Offset(size.width, lastY), 3.5, dotPaint);
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) {
-    return false;
+  bool shouldRepaint(covariant _StockChartPainter oldDelegate) {
+    return oldDelegate.prices != prices || oldDelegate.chartColor != chartColor;
   }
 }

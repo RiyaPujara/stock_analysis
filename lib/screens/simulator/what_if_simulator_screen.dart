@@ -35,6 +35,15 @@ class _WhatIfSimulatorScreenState extends State<WhatIfSimulatorScreen> {
   bool _isAnalyzingWithGemini = false;
   GeminiWhatIfResult? _geminiResult;
 
+  String _selectedHorizon = '1 Day';
+  final List<Map<String, String>> _timeHorizons = [
+    {'id': '1 Day', 'label': '⚡ 1 Day (Intraday)'},
+    {'id': '1 Week', 'label': '📅 1 Week (Short-Term)'},
+    {'id': '1 Month', 'label': '🗓️ 1 Month (Swing)'},
+    {'id': '3-6 Months', 'label': '📈 3-6 Months (Medium-Term)'},
+    {'id': '1 Year', 'label': '🎯 1 Year (Strategic)'},
+  ];
+
   double? _futureValue;
   double? _profitLoss;
   double? _returnPercentage;
@@ -99,6 +108,23 @@ class _WhatIfSimulatorScreenState extends State<WhatIfSimulatorScreen> {
     super.dispose();
   }
 
+  double _getHorizonMultiplier(String horizon) {
+    if (horizon.contains('Day') || horizon.contains('1D')) return 1.02;
+    if (horizon.contains('Week') || horizon.contains('1W')) return 1.045;
+    if (horizon.contains('Month') && !horizon.contains('3-6')) return 1.075;
+    return 1.12;
+  }
+
+  void _onHorizonChanged(String horizon) {
+    setState(() {
+      _selectedHorizon = horizon;
+      final current = double.tryParse(_currentPriceController.text) ?? 1000.0;
+      final mult = _getHorizonMultiplier(horizon);
+      _expectedPriceController.text = (current * mult).toStringAsFixed(2);
+      _calculateFinancials();
+    });
+  }
+
   Future<void> _fetchRealtimeQuote(String symbol) async {
     if (symbol.trim().isEmpty) return;
     setState(() => _isFetchingLivePrice = true);
@@ -109,7 +135,7 @@ class _WhatIfSimulatorScreenState extends State<WhatIfSimulatorScreen> {
       if (price > 0 && mounted) {
         setState(() {
           _currentPriceController.text = price.toStringAsFixed(2);
-          final expected = (price * 1.12).toStringAsFixed(2);
+          final expected = (price * _getHorizonMultiplier(_selectedHorizon)).toStringAsFixed(2);
           _expectedPriceController.text = expected;
         });
         _calculateFinancials();
@@ -158,6 +184,7 @@ class _WhatIfSimulatorScreenState extends State<WhatIfSimulatorScreen> {
         scenario: scenario,
         targetPrice: targetPrice,
         quantity: quantity,
+        timeHorizon: _selectedHorizon,
       );
 
       if (mounted) {
@@ -464,9 +491,63 @@ class _WhatIfSimulatorScreenState extends State<WhatIfSimulatorScreen> {
 
               const SizedBox(height: 24),
 
+              // Simulation Horizon Selector
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    '2. Simulation Horizon',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryEmerald.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      _selectedHorizon,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.primaryEmerald,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: _timeHorizons.map((hz) {
+                    final isSelected = _selectedHorizon == hz['id'];
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ChoiceChip(
+                        label: Text(hz['label']!),
+                        selected: isSelected,
+                        selectedColor: AppTheme.primaryEmerald.withValues(alpha: 0.2),
+                        labelStyle: TextStyle(
+                          fontSize: 12,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                          color: isSelected ? AppTheme.primaryEmerald : null,
+                        ),
+                        onSelected: (val) {
+                          if (val) _onHorizonChanged(hz['id']!);
+                        },
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
               // Scenario Selection
               const Text(
-                '2. What-If Hypothesis / Catalysts',
+                '3. What-If Hypothesis / Catalysts',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 10),
@@ -652,6 +733,22 @@ class _WhatIfSimulatorScreenState extends State<WhatIfSimulatorScreen> {
                       style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                     const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: AppTheme.accentPurple.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        _selectedHorizon,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.accentPurple,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(

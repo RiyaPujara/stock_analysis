@@ -71,77 +71,181 @@ export class MarketService {
 
   static async getHistoricalPrices(symbol: string, period = '1D') {
     const sym = symbol.toUpperCase();
-    const stock = await Stock.findOne({ symbol: sym });
-    const basePrice = stock ? stock.currentPrice : 2945.5;
+    const upperPeriod = period.toUpperCase();
+    const now = new Date();
 
-    // Check if database already has historical prices
-    let records = await HistoricalPrice.find({ symbol: sym }).sort({ date: 1 });
-
-    if (records.length > 0) {
-      return records.map((r) => r.toFlutterJson());
-    }
-
-    // Determine interval and points count based on chart period
-    let pointsCount = 12;
-    let stepMs = 30 * 60 * 1000; // 30 mins for 1D
-
-    switch (period.toUpperCase()) {
+    // Determine target start date based on period
+    let startDate = new Date();
+    switch (upperPeriod) {
       case '1W':
-        pointsCount = 7;
-        stepMs = 24 * 60 * 60 * 1000;
+        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
         break;
       case '1M':
-        pointsCount = 30;
+        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        break;
+      case '6M':
+        startDate = new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000);
+        break;
+      case '1Y':
+        startDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+        break;
+      case '1D':
+      default:
+        startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        break;
+    }
+
+    const minRequiredPoints = upperPeriod === '1D' ? 12 : upperPeriod === '1W' ? 7 : 10;
+    const isDbConnected = mongoose.connection.readyState === 1;
+    let stock = null;
+
+    // 1. Check if database already has historical prices within this specific time period
+    if (isDbConnected) {
+      try {
+        stock = await Stock.findOne({ symbol: sym });
+        const records = await HistoricalPrice.find({
+          symbol: sym,
+          date: { $gte: startDate },
+        }).sort({ date: 1 });
+
+        if (records.length >= minRequiredPoints) {
+          return records.map((r) => r.toFlutterJson());
+        }
+      } catch {
+        // Fall through to real-time or simulation
+      }
+    }
+
+    // 2. Try fetching real market data from Yahoo Finance for Indian Stocks (NSE/BSE)
+    try {
+      const formattedSym = sym.endsWith('.NS') || sym.endsWith('.BO') ? sym : `${sym}.NS`;
+      let yfRange = '1d';
+      let yfInterval = '15m';
+
+      if (upperPeriod === '1W') {
+        yfRange = '5d';
+        yfInterval = '60m';
+      } else if (upperPeriod === '1M') {
+        yfRange = '1mo';
+        yfInterval = '1d';
+      } else if (upperPeriod === '6M') {
+        yfRange = '6mo';
+        yfInterval = '1d';
+      } else if (upperPeriod === '1Y') {
+        yfRange = '1y';
+        yfInterval = '1wk';
+      }
+
+      const yfUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${formattedSym}?interval=${yfInterval}&range=${yfRange}`;
+      const yfRes = await fetch(yfUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+        signal: AbortSignal.timeout(3500),
+      });
+
+      if (yfRes.ok) {
+        const json: any = await yfRes.json();
+        const res = json?.chart?.result?.[0];
+        const timestamps: number[] = res?.timestamp || [];
+        const quotes = res?.indicators?.quote?.[0];
+
+        if (timestamps.length > 0 && quotes?.close) {
+          const points: any[] = [];
+          for (let i = 0; i < timestamps.length; i++) {
+            const close = quotes.close[i];
+            if (close != null && !isNaN(close)) {
+              const open = quotes.open?.[i] ?? close;
+              const high = quotes.high?.[i] ?? Math.max(open, close);
+              const low = quotes.low?.[i] ?? Math.min(open, close);
+              const volume = quotes.volume?.[i] ?? 100000;
+              points.push({
+                date: new Date(timestamps[i] * 1000).toISOString(),
+                open: parseFloat(open.toFixed(2)),
+                high: parseFloat(high.toFixed(2)),
+                low: parseFloat(low.toFixed(2)),
+                close: parseFloat(close.toFixed(2)),
+                volume: Math.floor(volume),
+              });
+            }
+          }
+          if (points.length >= minRequiredPoints) {
+            return points;
+          }
+        }
+      }
+    } catch {
+      // Microservice or Yahoo timed out, seamlessly proceed to high-fidelity simulation engine
+    }
+
+    // 3. High-fidelity backward random walk simulation anchored at current price
+    const basePrice = stock ? stock.currentPrice : 2945.5;
+    let pointsCount = 16; // Satisfies >= 12 for 1D
+    let stepMs = 25 * 60 * 1000; // 25 mins per candle for 1D
+    let volatility = 0.0035;
+
+    switch (upperPeriod) {
+      case '1W':
+        pointsCount = 14; // Satisfies >= 7 for 1W (morning & close per day)
+        stepMs = 12 * 60 * 60 * 1000;
+        volatility = 0.0075;
+        break;
+      case '1M':
+        pointsCount = 30; // Daily points for 1 month
         stepMs = 24 * 60 * 60 * 1000;
+        volatility = 0.012;
         break;
       case '6M':
         pointsCount = 60;
         stepMs = 3 * 24 * 60 * 60 * 1000;
+        volatility = 0.018;
         break;
       case '1Y':
         pointsCount = 90;
         stepMs = 4 * 24 * 60 * 60 * 1000;
+        volatility = 0.022;
         break;
       case '1D':
       default:
-        pointsCount = 12;
-        stepMs = 30 * 60 * 1000;
+        pointsCount = 16;
+        stepMs = 25 * 60 * 1000;
+        volatility = 0.0035;
         break;
     }
 
-    const now = new Date();
-    const generated: any[] = [];
+    const rawPoints: any[] = [];
+    let walkingPrice = basePrice;
 
-    let current = basePrice * 0.96;
-    for (let i = pointsCount; i >= 1; i--) {
-      const date = new Date(now.getTime() - i * stepMs);
-      const variation = (Math.random() - 0.48) * (basePrice * 0.015);
-      current = Math.max(1, current + variation);
-      const high = current + Math.random() * (basePrice * 0.008);
-      const low = current - Math.random() * (basePrice * 0.008);
-      const open = (current + low) / 2;
+    // Anchor the current moment point directly to basePrice
+    rawPoints.push({
+      date: now.toISOString(),
+      open: parseFloat((walkingPrice * (1 + (Math.random() - 0.5) * 0.002)).toFixed(2)),
+      high: parseFloat((walkingPrice * (1 + Math.random() * 0.003)).toFixed(2)),
+      low: parseFloat((walkingPrice * (1 - Math.random() * 0.003)).toFixed(2)),
+      close: parseFloat(walkingPrice.toFixed(2)),
+      volume: stock?.volume || 1200000,
+    });
 
-      generated.push({
-        date: date.toISOString(),
+    // Walk backward to guarantee smooth continuity without artificial drop or spike
+    for (let i = 1; i < pointsCount; i++) {
+      const stepDate = new Date(now.getTime() - i * stepMs);
+      const delta = (Math.random() - 0.49) * (basePrice * volatility);
+      walkingPrice = Math.max(1, walkingPrice - delta);
+
+      const high = walkingPrice + Math.random() * (basePrice * volatility * 0.8);
+      const low = Math.max(1, walkingPrice - Math.random() * (basePrice * volatility * 0.8));
+      const open = (walkingPrice + low) / 2;
+
+      rawPoints.push({
+        date: stepDate.toISOString(),
         open: parseFloat(open.toFixed(2)),
-        high: parseFloat(high.toFixed(2)),
-        low: parseFloat(low.toFixed(2)),
-        close: parseFloat(current.toFixed(2)),
-        volume: Math.floor(500000 + Math.random() * 2000000),
+        high: parseFloat(Math.max(high, open, walkingPrice).toFixed(2)),
+        low: parseFloat(Math.min(low, open, walkingPrice).toFixed(2)),
+        close: parseFloat(walkingPrice.toFixed(2)),
+        volume: Math.floor(400000 + Math.random() * 1800000),
       });
     }
 
-    // Add final point anchored to stock's actual current price
-    generated.push({
-      date: now.toISOString(),
-      open: parseFloat(((current + basePrice) / 2).toFixed(2)),
-      high: parseFloat((Math.max(current, basePrice) * 1.002).toFixed(2)),
-      low: parseFloat((Math.min(current, basePrice) * 0.998).toFixed(2)),
-      close: parseFloat(basePrice.toFixed(2)),
-      volume: stock?.volume || 1000000,
-    });
-
-    return generated;
+    // Return in chronological order
+    return rawPoints.reverse();
   }
 
   static async getFundamentals(symbol: string) {

@@ -27,23 +27,51 @@ async function test() {
     console.error('Indices error:', e);
   }
 
-  console.log('\n--- 3. Testing Gemini What-If Analysis ---');
+  console.log('\n--- 3. Testing Gemini What-If Analysis (Day & Week Horizon) ---');
   try {
-    const whatIf = await GeminiService.analyzeWhatIfScenario({
+    const whatIfDay = await GeminiService.analyzeWhatIfScenario({
       symbol: 'RELIANCE',
       companyName: 'Reliance Industries Ltd',
       currentPrice: 2945.5,
-      scenario: 'Q3 net profit increases by 25% with telecom ARPU growth to 200 INR',
+      scenario: 'Blockbuster order win of ₹5,000 Cr announced in morning trade',
+      timeHorizon: '1 Day',
     });
-    console.log('What-If Result:', {
-      sentiment: whatIf.sentiment,
-      probability: whatIf.probability,
-      baseTarget: whatIf.projectedPrice.base,
-      confidence: whatIf.confidenceScore,
-      action: whatIf.actionPlan.substring(0, 80) + '...',
+    console.log('1-Day What-If Result:', {
+      sentiment: whatIfDay.sentiment,
+      probability: whatIfDay.probability,
+      baseTarget: whatIfDay.projectedPrice.base,
+      changePercent: whatIfDay.projectedChangePercent + '%',
+      summary: whatIfDay.executiveSummary,
+    });
+
+    const whatIfWeek = await GeminiService.analyzeWhatIfScenario({
+      symbol: 'RELIANCE',
+      companyName: 'Reliance Industries Ltd',
+      currentPrice: 2945.5,
+      scenario: 'Weekly earnings surge with margin expansion guidance',
+      timeHorizon: '1 Week',
+    });
+    console.log('1-Week What-If Result:', {
+      sentiment: whatIfWeek.sentiment,
+      probability: whatIfWeek.probability,
+      baseTarget: whatIfWeek.projectedPrice.base,
+      changePercent: whatIfWeek.projectedChangePercent + '%',
+      summary: whatIfWeek.executiveSummary,
     });
   } catch (e) {
     console.error('GeminiService error:', e);
+  }
+
+  console.log('\n--- 4. Testing MarketService 1D & 1W Chart Data ---');
+  try {
+    const { MarketService } = await import('../services/market.service');
+    const hist1D = await MarketService.getHistoricalPrices('RELIANCE', '1D');
+    console.log('1D History points:', hist1D.length, 'First:', hist1D[0]?.close, 'Last:', hist1D[hist1D.length - 1]?.close);
+
+    const hist1W = await MarketService.getHistoricalPrices('RELIANCE', '1W');
+    console.log('1W History points:', hist1W.length, 'First:', hist1W[0]?.close, 'Last:', hist1W[hist1W.length - 1]?.close);
+  } catch (e) {
+    console.error('MarketService error:', e);
   }
 }
 
